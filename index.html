@@ -1,0 +1,26 @@
+<body style="margin:0; overflow:hidden;">
+
+<script>
+const isMobile = /iPhone|iPad|Android/i.test(navigator.userAgent);
+
+if (!isMobile) {
+  document.body.innerHTML =
+    "<h2 style='padding:20px'>このページはスマホで開いてください。</h2>";
+}
+</script>
+
+<a-scene embedded arjs>
+  <a-marker preset="hiro">
+
+    <a-text
+      value="こんにちは"
+      position="0 1 0"
+      scale="1 1 1">
+    </a-text>
+
+  </a-marker>
+
+  <a-entity camera></a-entity>
+</a-scene>
+
+</body>
