@@ -12,30 +12,22 @@
 </head>
 
 <body>
-  <a-scene
-    mindar-image="imageTargetSrc: assets/targets.mind"
-    color-space="sRGB"
-    renderer="colorManagement: true, physicallyCorrectLights"
-    vr-mode-ui="enabled: false"
-    device-orientation-permission-ui="enabled: false">
+<a-scene mindar-image="imageTargetSrc: assets/targets.mind">
 
-    <!-- カメラ -->
-    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+  <a-assets>
+    <a-asset-item id="model" src="assets/model.glb"></a-asset-item>
+  </a-assets>
 
-    <!-- ターゲット画像 -->
-    <a-entity mindar-image-target="targetIndex: 0">
+  <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-      <!-- 赤い立方体 -->
-      <a-box
-        position="0 0.5 0"
-        color="red"
-        depth="0.5"
-        height="0.5"
-        width="0.5">
-      </a-box>
+  <a-entity mindar-image-target="targetIndex: 0">
+    <a-gltf-model
+      src="#model"
+      position="0 0 0"
+      scale="0.05 0.05 0.05">
+    </a-gltf-model>
+  </a-entity>
 
-    </a-entity>
-
-  </a-scene>
+</a-scene>
 </body>
 </html>
