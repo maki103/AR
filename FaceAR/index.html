@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>MindAR Face Tracking</title>
+  <title>MindAR Face Tracking + Occluder</title>
 
   <meta
     name="viewport"
@@ -22,7 +22,9 @@
       overflow: hidden;
     }
   </style>
+
 </head>
+
 
 <body>
 
@@ -33,25 +35,58 @@
   vr-mode-ui="enabled: false"
   device-orientation-permission-ui="enabled: false">
 
+
   <a-assets>
+
+    <!-- 眼鏡モデル -->
     <a-asset-item
       id="glassesModel"
       src="./assets/glasses/scene.gltf">
     </a-asset-item>
+
+
+    <!-- オクルーダー用顔モデル -->
+    <a-asset-item
+      id="headModel"
+      src="./assets/headOccluder.glb">
+    </a-asset-item>
+
   </a-assets>
 
+
+
   <a-entity mindar-face-target="anchorIndex:168">
+
+
+    <!-- ★ 顔オクルーダー -->
+    <a-gltf-model
+      src="#headModel"
+      mindar-face-occluder>
+    </a-gltf-model>
+
+
+
+    <!-- 眼鏡 -->
     <a-gltf-model
       src="#glassesModel"
       position="0 0 0"
       rotation="0 0 0"
-      scale="0.008 0.008 0.008">
+      scale="0.01 0.01 0.01">
     </a-gltf-model>
+
+
   </a-entity>
 
-  <a-camera active="false" position="0 0 0"></a-camera>
+
+
+  <a-camera
+    active="false"
+    position="0 0 0">
+  </a-camera>
+
 
 </a-scene>
+
 
 </body>
 </html>
