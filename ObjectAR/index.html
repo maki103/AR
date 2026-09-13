@@ -33,54 +33,43 @@
 
     #message {
       position: fixed;
-
       top: 20px;
       left: 50%;
-
       transform: translateX(-50%);
 
       width: 90%;
-
       padding: 15px;
 
       background: rgba(0, 0, 0, 0.7);
-
       color: white;
 
       text-align: center;
-
       font-size: 20px;
 
       border-radius: 10px;
-
       z-index: 10;
     }
 
     #score {
       position: fixed;
-
       bottom: 20px;
       left: 50%;
-
       transform: translateX(-50%);
 
       padding: 10px 20px;
 
       background: rgba(0, 0, 0, 0.7);
-
       color: white;
 
       font-size: 18px;
 
       border-radius: 10px;
-
       z-index: 10;
     }
 
   </style>
 
 </head>
-
 
 <body>
 
@@ -90,12 +79,10 @@
          playsinline>
   </video>
 
-
   <!-- 認識結果 -->
   <div id="message">
     カメラを起動しています
   </div>
-
 
   <!-- 一致度 -->
   <div id="score">
@@ -179,19 +166,15 @@ function waitForOpenCV() {
       "OpenCV.js 読み込み成功"
     );
 
-
     message.innerText =
       "OpenCV.js 読み込み成功";
 
-
     loadReference();
-
 
   } else {
 
     message.innerText =
       "OpenCV.js 読み込み中...";
-
 
     setTimeout(
       waitForOpenCV,
@@ -216,24 +199,16 @@ function loadReference() {
   img.onload = function() {
 
     console.log(
-      "reference.jpg 読み込み成功"
+      "reference.png 読み込み成功"
     );
 
-
     referenceImage = img;
-
 
     message.innerText =
       "基準画像読み込み成功";
 
-
     scoreText.innerText =
       "認識を開始します";
-
-
-    /*
-     * カメラの準備ができるまで待つ
-     */
 
     waitForVideo();
 
@@ -243,13 +218,11 @@ function loadReference() {
   img.onerror = function() {
 
     console.error(
-      "reference.jpg 読み込み失敗"
+      "reference.png 読み込み失敗"
     );
 
-
     message.innerText =
-      "reference.jpgを読み込めません";
-
+      "reference.pngを読み込めません";
 
     scoreText.innerText =
       "画像ファイルを確認してください";
@@ -258,7 +231,7 @@ function loadReference() {
 
 
   img.src =
-    "assets/reference.jpg";
+    "assets/reference.png";
 
 }
 
@@ -277,16 +250,10 @@ function waitForVideo() {
     message.innerText =
       "展示物をカメラに映してください";
 
-
-    /*
-     * 0.5秒ごとに認識
-     */
-
     setInterval(
       recognizeObject,
       500
     );
-
 
   } else {
 
@@ -318,19 +285,13 @@ function recognizeObject() {
 
   try {
 
-    /*
-     * -----------------------------
-     * 基準画像
-     * -----------------------------
-     */
+    /* =============================
+       基準画像
+       ============================= */
 
     const reference =
       cv.imread(referenceImage);
 
-
-    /*
-     * グレースケール化
-     */
 
     const referenceGray =
       new cv.Mat();
@@ -343,11 +304,9 @@ function recognizeObject() {
     );
 
 
-    /*
-     * -----------------------------
-     * カメラ画像
-     * -----------------------------
-     */
+    /* =============================
+       カメラ画像
+       ============================= */
 
     const canvas =
       document.createElement("canvas");
@@ -377,10 +336,6 @@ function recognizeObject() {
       cv.imread(canvas);
 
 
-    /*
-     * カメラ画像をグレースケール化
-     */
-
     const cameraGray =
       new cv.Mat();
 
@@ -392,11 +347,9 @@ function recognizeObject() {
     );
 
 
-    /*
-     * -----------------------------
-     * 基準画像を少し小さくする
-     * -----------------------------
-     */
+    /* =============================
+       基準画像を縮小
+       ============================= */
 
     const template =
       new cv.Mat();
@@ -426,11 +379,9 @@ function recognizeObject() {
     );
 
 
-    /*
-     * -----------------------------
-     * テンプレートマッチング
-     * -----------------------------
-     */
+    /* =============================
+       テンプレートマッチング
+       ============================= */
 
     const result =
       new cv.Mat();
@@ -444,9 +395,9 @@ function recognizeObject() {
     );
 
 
-    /*
-     * 最も一致した場所を取得
-     */
+    /* =============================
+       最も一致した場所
+       ============================= */
 
     const minMax =
       cv.minMaxLoc(result);
@@ -456,19 +407,14 @@ function recognizeObject() {
       minMax.maxVal;
 
 
-    /*
-     * -----------------------------
-     * 認識判定
-     * -----------------------------
-     *
-     * 最初は0.70に設定
-     */
+    /* =============================
+       認識判定
+       ============================= */
 
     if (maxScore >= 0.70) {
 
       message.innerText =
         "展示物を認識しました";
-
 
     } else {
 
@@ -489,22 +435,17 @@ function recognizeObject() {
     );
 
 
-    /*
-     * -----------------------------
-     * メモリ解放
-     * -----------------------------
-     */
+    /* =============================
+       メモリ解放
+       ============================= */
 
     reference.delete();
-
     referenceGray.delete();
 
     camera.delete();
-
     cameraGray.delete();
 
     template.delete();
-
     result.delete();
 
 
