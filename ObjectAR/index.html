@@ -5,15 +5,17 @@
 
   <meta name="viewport"
         content="width=device-width,
-                 initial-scale=1.0,
-                 maximum-scale=1.0,
-                 user-scalable=no">
+        initial-scale=1.0,
+        maximum-scale=1.0,
+        user-scalable=no">
 
   <title>展示物認識</title>
 
   <!-- OpenCV.js -->
-  <script async
-          src="https://docs.opencv.org/4.x/opencv.js">
+  <script
+    src="https://docs.opencv.org/4.x/opencv.js"
+    async
+    onload="opencvLoaded()">
   </script>
 
   <style>
@@ -24,68 +26,47 @@
       height: 100%;
       overflow: hidden;
       background: black;
-      font-family: sans-serif;
     }
 
-    /* カメラ映像 */
     #video {
-      position: fixed;
-      top: 0;
-      left: 0;
-
       width: 100%;
       height: 100%;
-
       object-fit: cover;
-
-      z-index: 1;
     }
 
-    /* 上部メッセージ */
     #message {
       position: fixed;
-
       top: 20px;
       left: 50%;
-
       transform: translateX(-50%);
 
       width: 90%;
-
       padding: 15px;
 
       background: rgba(0, 0, 0, 0.7);
-
       color: white;
 
       text-align: center;
-
       font-size: 20px;
 
       border-radius: 10px;
-
       z-index: 10;
     }
 
-    /* 下部の特徴点数 */
     #count {
       position: fixed;
-
       bottom: 20px;
       left: 50%;
-
       transform: translateX(-50%);
 
       padding: 10px 20px;
 
       background: rgba(0, 0, 0, 0.7);
-
       color: white;
 
       font-size: 18px;
 
       border-radius: 10px;
-
       z-index: 10;
     }
   </style>
@@ -93,321 +74,95 @@
 
 <body>
 
-  <!-- カメラ映像 -->
-  <video id="video"
-         autoplay
-         playsinline>
-  </video>
+<video id="video"
+       autoplay
+       playsinline></video>
 
-  <!-- 状態表示 -->
-  <div id="message">
-    カメラを起動しています
-  </div>
+<div id="message">
+  カメラを起動しています
+</div>
 
-  <!-- 特徴点数表示 -->
-  <div id="count">
-    認識準備中...
-  </div>
+<div id="count">
+  OpenCV.js 読み込み確認中
+</div>
 
+<script>
 
-  <script>
+const video =
+  document.getElementById("video");
 
-    /* =========================
-       HTML要素
-       ========================= */
+const message =
+  document.getElementById("message");
 
-    const video =
-      document.getElementById("video");
+const count =
+  document.getElementById("count");
 
-    const message =
-      document.getElementById("message");
 
-    const count =
-      document.getElementById("count");
+/* =========================
+   OpenCV読み込み完了
+   ========================= */
 
+function opencvLoaded() {
 
-    /* =========================
-       カメラ起動
-       ========================= */
+  console.log(
+    "OpenCV.jsの読み込み完了"
+  );
 
-    async function startCamera() {
+  message.innerText =
+    "OpenCV.js 読み込み成功";
 
-      try {
+  count.innerText =
+    "カメラを確認しています";
 
-        const stream =
-          await navigator.mediaDevices.getUserMedia({
+}
 
-            video: {
-              facingMode: {
-                ideal: "environment"
-              }
-            },
 
-            audio: false
+/* =========================
+   カメラ起動
+   ========================= */
 
-          });
+async function startCamera() {
 
+  try {
 
-        video.srcObject = stream;
+    const stream =
+      await navigator.mediaDevices.getUserMedia({
 
+        video: {
+          facingMode: "environment"
+        },
 
-        message.innerText =
-          "カメラ起動成功";
+        audio: false
 
+      });
 
-      } catch (error) {
+    video.srcObject = stream;
 
-        console.error(error);
+    message.innerText =
+      "カメラ起動成功";
 
+  } catch (error) {
 
-        message.innerText =
-          "カメラを起動できませんでした";
+    console.error(error);
 
-      }
+    message.innerText =
+      "カメラを起動できませんでした";
 
-    }
+    count.innerText =
+      error.message;
 
+  }
 
-    /* =========================
-       OpenCV.jsの読み込み確認
-       ========================= */
+}
 
-    function checkOpenCV() {
 
-      if (
-        typeof cv !== "undefined" &&
-        cv.Mat
-      ) {
+/* =========================
+   カメラ開始
+   ========================= */
 
-        console.log(
-          "OpenCV.js 読み込み成功"
-        );
+startCamera();
 
-
-        message.innerText =
-          "OpenCV.js 読み込み成功";
-
-
-        /*
-         * OpenCVが読み込めたら
-         * 基準画像を読み込む
-         */
-
-        loadReferenceImage();
-
-
-      } else {
-
-        console.log(
-          "OpenCV.js 読み込み中..."
-        );
-
-
-        message.innerText =
-          "OpenCV.js 読み込み中...";
-
-
-        setTimeout(
-          checkOpenCV,
-          500
-        );
-
-      }
-
-    }
-
-
-    /* =========================
-       基準画像を読み込む
-       ========================= */
-
-    function loadReferenceImage() {
-
-      const img =
-        new Image();
-
-
-      img.onload = function() {
-
-        console.log(
-          "reference.jpg 読み込み成功"
-        );
-
-
-        detectFeatures(img);
-
-      };
-
-
-      img.onerror = function() {
-
-        console.error(
-          "reference.jpg 読み込み失敗"
-        );
-
-
-        message.innerText =
-          "reference.jpgを読み込めません";
-
-
-        count.innerText =
-          "画像ファイルを確認してください";
-
-      };
-
-
-      /*
-       * 今回のぬいぐるみ画像
-       */
-
-      img.src =
-        "assets/reference.jpg";
-
-    }
-
-
-    /* =========================
-       ORBで特徴点を取得
-       ========================= */
-
-    function detectFeatures(img) {
-
-      try {
-
-        /*
-         * 基準画像をOpenCV形式に変換
-         */
-
-        const mat =
-          cv.imread(img);
-
-
-        /*
-         * グレースケール画像を作成
-         */
-
-        const gray =
-          new cv.Mat();
-
-
-        cv.cvtColor(
-          mat,
-          gray,
-          cv.COLOR_RGBA2GRAY
-        );
-
-
-        /*
-         * ORBを作成
-         *
-         * 最大500個の特徴点を検出
-         */
-
-        const orb =
-          new cv.ORB_create(500);
-
-
-        /*
-         * 特徴点を保存する場所
-         */
-
-        const keypoints =
-          new cv.KeyPointVector();
-
-
-        /*
-         * 特徴量を保存する場所
-         */
-
-        const descriptors =
-          new cv.Mat();
-
-
-        /*
-         * 特徴点と特徴量を取得
-         */
-
-        orb.detectAndCompute(
-          gray,
-          new cv.Mat(),
-          keypoints,
-          descriptors
-        );
-
-
-        /*
-         * 結果を表示
-         */
-
-        const featureCount =
-          keypoints.size();
-
-
-        message.innerText =
-          "基準画像の特徴点を取得しました";
-
-
-        count.innerText =
-          "基準画像の特徴点：" +
-          featureCount;
-
-
-        console.log(
-          "基準画像の特徴点数：",
-          featureCount
-        );
-
-
-        /*
-         * ここではまだ
-         * カメラ画像との比較はしない
-         */
-
-        console.log(
-          "ORB特徴点取得完了"
-        );
-
-
-        /*
-         * メモリ解放
-         */
-
-        mat.delete();
-
-        gray.delete();
-
-        keypoints.delete();
-
-        descriptors.delete();
-
-
-      } catch (error) {
-
-        console.error(error);
-
-
-        message.innerText =
-          "特徴点の取得に失敗しました";
-
-
-        count.innerText =
-          "エラー：" +
-          error.message;
-
-      }
-
-    }
-
-
-    /* =========================
-       実行
-       ========================= */
-
-    startCamera();
-
-    checkOpenCV();
-
-  </script>
+</script>
 
 </body>
 </html>
