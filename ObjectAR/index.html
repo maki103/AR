@@ -11,11 +11,8 @@
 
   <title>展示物認識</title>
 
-  <!-- OpenCV.js -->
-  <script
-    src="../opencv.js"
-    onload="opencvLoaded()">
-  </script>
+  <!-- GitHub Pagesに置いたOpenCV.js -->
+  <script src="../opencv.js"></script>
 
   <style>
     html, body {
@@ -73,95 +70,112 @@
 
 <body>
 
-<video id="video"
-       autoplay
-       playsinline></video>
+  <video id="video"
+         autoplay
+         playsinline></video>
 
-<div id="message">
-  カメラを起動しています
-</div>
+  <div id="message">
+    カメラを起動しています
+  </div>
 
-<div id="count">
-  OpenCV.js 読み込み確認中
-</div>
-
-<script>
-
-const video =
-  document.getElementById("video");
-
-const message =
-  document.getElementById("message");
-
-const count =
-  document.getElementById("count");
+  <div id="count">
+    OpenCV.js 読み込み確認中...
+  </div>
 
 
-/* =========================
-   OpenCV読み込み完了
-   ========================= */
+  <script>
 
-function opencvLoaded() {
+    const video =
+      document.getElementById("video");
 
-  console.log(
-    "OpenCV.jsの読み込み完了"
-  );
+    const message =
+      document.getElementById("message");
 
-  message.innerText =
-    "OpenCV.js 読み込み成功";
-
-  count.innerText =
-    "カメラを確認しています";
-
-}
+    const count =
+      document.getElementById("count");
 
 
-/* =========================
-   カメラ起動
-   ========================= */
+    /* =========================
+       カメラ起動
+       ========================= */
 
-async function startCamera() {
+    async function startCamera() {
 
-  try {
+      try {
 
-    const stream =
-      await navigator.mediaDevices.getUserMedia({
+        const stream =
+          await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: "environment"
+            },
+            audio: false
+          });
 
-        video: {
-          facingMode: "environment"
-        },
+        video.srcObject = stream;
 
-        audio: false
+        message.innerText =
+          "カメラ起動成功";
 
-      });
+      } catch (error) {
 
-    video.srcObject = stream;
+        console.error(error);
 
-    message.innerText =
-      "カメラ起動成功";
+        message.innerText =
+          "カメラを起動できませんでした";
 
-  } catch (error) {
+        count.innerText =
+          error.message;
 
-    console.error(error);
+      }
 
-    message.innerText =
-      "カメラを起動できませんでした";
-
-    count.innerText =
-      error.message;
-
-  }
-
-}
+    }
 
 
-/* =========================
-   カメラ開始
-   ========================= */
+    /* =========================
+       OpenCV.js確認
+       ========================= */
 
-startCamera();
+    function checkOpenCV() {
 
-</script>
+      if (
+        typeof cv !== "undefined" &&
+        cv.Mat
+      ) {
+
+        message.innerText =
+          "OpenCV.js 読み込み成功";
+
+        count.innerText =
+          "OpenCVを使用できます";
+
+        console.log(
+          "OpenCV.js 読み込み成功"
+        );
+
+      } else {
+
+        message.innerText =
+          "OpenCV.js 読み込み中...";
+
+        setTimeout(
+          checkOpenCV,
+          500
+        );
+
+      }
+
+    }
+
+
+    /* =========================
+       起動
+       ========================= */
+
+    startCamera();
+
+    checkOpenCV();
+
+  </script>
 
 </body>
 </html>
