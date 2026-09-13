@@ -60,42 +60,141 @@
 
   <script>
 
-    const video = document.getElementById("video");
-    const message = document.getElementById("message");
+  const video = document.getElementById("video");
+  const message = document.getElementById("message");
 
-    async function startCamera() {
+  async function startCamera() {
+
+    try {
+
+      const stream =
+        await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: {
+              ideal: "environment"
+            }
+          },
+          audio: false
+        });
+
+      video.srcObject = stream;
+
+      message.innerText =
+        "カメラ起動成功";
+
+    } catch (error) {
+
+      console.error(error);
+
+      message.innerText =
+        "カメラを起動できませんでした";
+
+    }
+
+  }
+
+
+  function checkOpenCV() {
+
+    if (typeof cv !== "undefined" && cv.Mat) {
+
+      message.innerText =
+        "OpenCV.js 読み込み成功";
+
+      loadReferenceImage();
+
+    } else {
+
+      message.innerText =
+        "OpenCV.js 読み込み中...";
+
+      setTimeout(checkOpenCV, 500);
+
+    }
+
+  }
+
+
+  function loadReferenceImage() {
+
+    const img = new Image();
+
+    img.onload = function() {
 
       try {
 
-        const stream =
-          await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: {
-                ideal: "environment"
-              }
-            },
-            audio: false
-          });
+        const mat = cv.imread(img);
 
-        video.srcObject = stream;
+        const gray = new cv.Mat();
+
+        cv.cvtColor(
+          mat,
+          gray,
+          cv.COLOR_RGBA2GRAY
+        );
+
+
+        const orb =
+          new cv.ORB_create(500);
+
+        const keypoints =
+          new cv.KeyPointVector();
+
+        const descriptors =
+          new cv.Mat();
+
+
+        orb.detectAndCompute(
+          gray,
+          new cv.Mat(),
+          keypoints,
+          descriptors
+        );
+
 
         message.innerText =
-          "カメラ起動成功";
+          "基準画像の読み込み成功";
+
+        document.getElementById("count").innerText =
+          "基準画像の特徴点：" +
+          keypoints.size();
+
+
+        mat.delete();
+        gray.delete();
+        keypoints.delete();
+        descriptors.delete();
 
       } catch (error) {
 
         console.error(error);
 
         message.innerText =
-          "カメラを起動できませんでした";
+          "特徴点の取得に失敗しました";
 
       }
 
-    }
+    };
 
-    startCamera();
+
+    img.onerror = function() {
+
+      message.innerText =
+        "reference.jpgを読み込めません";
+
+    };
+
+
+    img.src =
+      "assets/reference.jpg";
+
+  }
+
+
+  startCamera();
+  checkOpenCV();
 
   </script>
-
+  
 </body>
 </html>
