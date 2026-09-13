@@ -60,141 +60,24 @@
 
   <script>
 
-  const video = document.getElementById("video");
-  const message = document.getElementById("message");
+  startCamera();
 
-  async function startCamera() {
+  setTimeout(function() {
 
-    try {
-
-      const stream =
-        await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: {
-              ideal: "environment"
-            }
-          },
-          audio: false
-        });
-
-      video.srcObject = stream;
-
-      message.innerText =
-        "カメラ起動成功";
-
-    } catch (error) {
-
-      console.error(error);
-
-      message.innerText =
-        "カメラを起動できませんでした";
-
-    }
-
-  }
-
-
-  function checkOpenCV() {
-
-    if (typeof cv !== "undefined" && cv.Mat) {
+    if (typeof cv !== "undefined") {
 
       message.innerText =
         "OpenCV.js 読み込み成功";
 
-      loadReferenceImage();
-
     } else {
 
       message.innerText =
-        "OpenCV.js 読み込み中...";
-
-      setTimeout(checkOpenCV, 500);
+        "OpenCV.js 読み込み失敗";
 
     }
 
-  }
+  }, 5000);
 
-
-  function loadReferenceImage() {
-
-    const img = new Image();
-
-    img.onload = function() {
-
-      try {
-
-        const mat = cv.imread(img);
-
-        const gray = new cv.Mat();
-
-        cv.cvtColor(
-          mat,
-          gray,
-          cv.COLOR_RGBA2GRAY
-        );
-
-
-        const orb =
-          new cv.ORB_create(500);
-
-        const keypoints =
-          new cv.KeyPointVector();
-
-        const descriptors =
-          new cv.Mat();
-
-
-        orb.detectAndCompute(
-          gray,
-          new cv.Mat(),
-          keypoints,
-          descriptors
-        );
-
-
-        message.innerText =
-          "基準画像の読み込み成功";
-
-        document.getElementById("count").innerText =
-          "基準画像の特徴点：" +
-          keypoints.size();
-
-
-        mat.delete();
-        gray.delete();
-        keypoints.delete();
-        descriptors.delete();
-
-      } catch (error) {
-
-        console.error(error);
-
-        message.innerText =
-          "特徴点の取得に失敗しました";
-
-      }
-
-    };
-
-
-    img.onerror = function() {
-
-      message.innerText =
-        "reference.jpgを読み込めません";
-
-    };
-
-
-    img.src =
-      "assets/reference.jpg";
-
-  }
-
-
-  startCamera();
-  checkOpenCV();
-
-  </script>
-  
+</script>
 </body>
 </html>
