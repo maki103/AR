@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html lang="ja">
+
 <head>
+
   <meta charset="UTF-8">
 
   <meta name="viewport"
@@ -11,8 +13,10 @@
 
   <title>展示物認識</title>
 
-  <!-- GitHub Pagesに置いたOpenCV.js -->
+
+  <!-- OpenCV.js -->
   <script src="../opencv.js"></script>
+
 
   <style>
 
@@ -25,67 +29,98 @@
       background: black;
     }
 
+
     #video {
       width: 100%;
       height: 100%;
       object-fit: cover;
     }
 
+
     #message {
       position: fixed;
+
       top: 20px;
       left: 50%;
+
       transform: translateX(-50%);
 
       width: 90%;
+
       padding: 15px;
 
       background: rgba(0, 0, 0, 0.7);
+
       color: white;
 
       text-align: center;
+
       font-size: 20px;
 
       border-radius: 10px;
+
       z-index: 10;
     }
 
+
     #score {
       position: fixed;
+
       bottom: 20px;
       left: 50%;
+
       transform: translateX(-50%);
 
       padding: 10px 20px;
 
       background: rgba(0, 0, 0, 0.7);
+
       color: white;
 
       font-size: 18px;
 
       border-radius: 10px;
+
       z-index: 10;
     }
 
   </style>
+
 </head>
+
 
 <body>
 
+
+  <!-- カメラ映像 -->
+
   <video id="video"
          autoplay
-         playsinline></video>
+         muted
+         playsinline>
+  </video>
+
+
+  <!-- 認識状態 -->
 
   <div id="message">
-    カメラを起動しています
+    起動しています
   </div>
 
+
+  <!-- 一致度 -->
+
   <div id="score">
-    OpenCV.js 読み込み確認中...
+    準備中...
   </div>
 
 
 <script>
+
+
+/* =================================
+   HTML要素
+   ================================= */
 
 const video =
   document.getElementById("video");
@@ -97,8 +132,15 @@ const scoreText =
   document.getElementById("score");
 
 
+/* =================================
+   変数
+   ================================= */
+
 let referenceImage = null;
+
 let recognitionStarted = false;
+
+let recognitionTimer = null;
 
 
 /* =================================
@@ -108,6 +150,10 @@ let recognitionStarted = false;
 async function startCamera() {
 
   try {
+
+    message.innerText =
+      "カメラを起動しています";
+
 
     const stream =
       await navigator.mediaDevices.getUserMedia({
@@ -123,35 +169,77 @@ async function startCamera() {
       });
 
 
+    console.log(
+      "カメラストリーム取得成功"
+    );
+
+
+    /*
+     * カメラ映像をvideoに設定
+     */
+
     video.srcObject = stream;
 
 
     /*
-     * カメラ映像の準備ができたら
-     * 認識開始
+     * 明示的に再生
      */
 
-    video.addEventListener(
-      "loadedmetadata",
-      startRecognition
-    );
+    try {
 
-    video.addEventListener(
-      "canplay",
-      startRecognition
-    );
+      await video.play();
+
+      console.log(
+        "video再生開始"
+      );
+
+    } catch (error) {
+
+      console.error(
+        "video.play()エラー:",
+        error
+      );
+
+    }
 
 
     message.innerText =
       "カメラ起動成功";
 
 
+    /*
+     * カメラ映像の準備を監視
+     */
+
+    video.addEventListener(
+      "loadeddata",
+      checkCameraReady
+    );
+
+
+    video.addEventListener(
+      "canplay",
+      checkCameraReady
+    );
+
+
+    video.addEventListener(
+      "playing",
+      checkCameraReady
+    );
+
+
   } catch (error) {
 
-    console.error(error);
+    console.error(
+      "カメラエラー:",
+      error
+    );
+
 
     message.innerText =
       "カメラを起動できませんでした";
+
 
     scoreText.innerText =
       error.message;
@@ -162,7 +250,54 @@ async function startCamera() {
 
 
 /* =================================
-   OpenCV確認
+   カメラ準備確認
+   ================================= */
+
+function checkCameraReady() {
+
+  console.log(
+    "カメラ状態確認"
+  );
+
+  console.log(
+    "readyState:",
+    video.readyState
+  );
+
+  console.log(
+    "videoWidth:",
+    video.videoWidth
+  );
+
+  console.log(
+    "videoHeight:",
+    video.videoHeight
+  );
+
+
+  if (
+    video.videoWidth > 0 &&
+    video.videoHeight > 0
+  ) {
+
+    message.innerText =
+      "カメラ映像準備完了";
+
+
+    scoreText.innerText =
+      "基準画像を読み込んでいます";
+
+
+    startRecognition();
+
+
+  }
+
+}
+
+
+/* =================================
+   OpenCV.js確認
    ================================= */
 
 function waitForOpenCV() {
@@ -173,21 +308,31 @@ function waitForOpenCV() {
   ) {
 
     console.log(
-      "OpenCV.js 読み込み成功"
+      "OpenCV.js読み込み成功"
     );
 
+
     message.innerText =
-      "OpenCV.js 読み込み成功";
+      "OpenCV.js読み込み成功";
+
 
     scoreText.innerText =
       "基準画像を読み込んでいます";
 
+
     loadReference();
+
 
   } else {
 
+    console.log(
+      "OpenCV.js読み込み待機中"
+    );
+
+
     message.innerText =
-      "OpenCV.js 読み込み中...";
+      "OpenCV.js読み込み中";
+
 
     setTimeout(
       waitForOpenCV,
@@ -208,39 +353,56 @@ function loadReference() {
   const img =
     new Image();
 
+
   img.onload = function() {
 
     console.log(
-      "reference.png 読み込み成功"
+      "reference.png読み込み成功"
     );
 
-    referenceImage = img;
+
+    referenceImage =
+      img;
+
 
     message.innerText =
       "基準画像読み込み成功";
 
+
     scoreText.innerText =
       "カメラ映像を待っています";
 
-    startRecognition();
+
+    /*
+     * カメラがすでに準備できていれば開始
+     */
+
+    checkCameraReady();
 
   };
 
 
-  img.onerror = function() {
+  img.onerror = function(error) {
 
     console.error(
-      "reference.png 読み込み失敗"
+      "reference.png読み込み失敗",
+      error
     );
+
 
     message.innerText =
       "reference.pngを読み込めません";
+
 
     scoreText.innerText =
       "assets/reference.pngを確認してください";
 
   };
 
+
+  /*
+   * PNGファイル
+   */
 
   img.src =
     "assets/reference.png";
@@ -254,19 +416,35 @@ function loadReference() {
 
 function startRecognition() {
 
+  /*
+   * すでに開始している場合は何もしない
+   */
+
   if (recognitionStarted) {
+
     return;
+
   }
 
+
+  /*
+   * 基準画像がない場合
+   */
 
   if (!referenceImage) {
+
     return;
+
   }
 
 
+  /*
+   * カメラ映像サイズが取得できない場合
+   */
+
   if (
-    !video.videoWidth ||
-    !video.videoHeight
+    video.videoWidth <= 0 ||
+    video.videoHeight <= 0
   ) {
 
     return;
@@ -274,26 +452,18 @@ function startRecognition() {
   }
 
 
-  recognitionStarted = true;
+  recognitionStarted =
+    true;
 
 
   console.log(
-    "カメラ映像準備完了"
-  );
-
-  console.log(
-    "videoWidth:",
-    video.videoWidth
-  );
-
-  console.log(
-    "videoHeight:",
-    video.videoHeight
+    "認識開始"
   );
 
 
   message.innerText =
     "展示物をカメラに映してください";
+
 
   scoreText.innerText =
     "認識準備完了";
@@ -303,10 +473,11 @@ function startRecognition() {
    * 0.5秒ごとに認識
    */
 
-  setInterval(
-    recognizeObject,
-    500
-  );
+  recognitionTimer =
+    setInterval(
+      recognizeObject,
+      500
+    );
 
 }
 
@@ -318,9 +489,17 @@ function startRecognition() {
 function recognizeObject() {
 
   if (
-    !referenceImage ||
-    !video.videoWidth ||
-    !video.videoHeight
+    !referenceImage
+  ) {
+
+    return;
+
+  }
+
+
+  if (
+    video.videoWidth <= 0 ||
+    video.videoHeight <= 0
   ) {
 
     return;
@@ -329,6 +508,7 @@ function recognizeObject() {
 
 
   try {
+
 
     /* =============================
        基準画像
@@ -414,15 +594,25 @@ function recognizeObject() {
       );
 
 
+    /*
+     * サイズ確認
+     */
+
     if (
+      templateWidth <= 0 ||
+      templateHeight <= 0 ||
       templateWidth >= cameraGray.cols ||
       templateHeight >= cameraGray.rows
     ) {
 
       reference.delete();
+
       referenceGray.delete();
+
       camera.delete();
+
       cameraGray.delete();
+
       template.delete();
 
       return;
@@ -457,7 +647,7 @@ function recognizeObject() {
 
 
     /* =============================
-       一致度
+       最大一致度を取得
        ============================= */
 
     const minMax =
@@ -468,11 +658,19 @@ function recognizeObject() {
       minMax.maxVal;
 
 
+    console.log(
+      "一致度:",
+      maxScore.toFixed(2)
+    );
+
+
     /* =============================
        認識判定
        ============================= */
 
-    if (maxScore >= 0.70) {
+    if (
+      maxScore >= 0.70
+    ) {
 
       message.innerText =
         "展示物を認識しました";
@@ -490,32 +688,34 @@ function recognizeObject() {
       maxScore.toFixed(2);
 
 
-    console.log(
-      "一致度：",
-      maxScore.toFixed(2)
-    );
-
-
     /* =============================
        メモリ解放
        ============================= */
 
     reference.delete();
+
     referenceGray.delete();
 
     camera.delete();
+
     cameraGray.delete();
 
     template.delete();
+
     result.delete();
 
 
   } catch (error) {
 
-    console.error(error);
+    console.error(
+      "認識エラー:",
+      error
+    );
+
 
     message.innerText =
       "認識処理でエラーが発生しました";
+
 
     scoreText.innerText =
       error.message;
@@ -533,7 +733,9 @@ startCamera();
 
 waitForOpenCV();
 
+
 </script>
 
 </body>
+
 </html>
