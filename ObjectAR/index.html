@@ -11,8 +11,11 @@
 
   <title>展示物認識</title>
 
-  <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
-  
+  <!-- OpenCV.js -->
+  <script async
+          src="https://docs.opencv.org/4.x/opencv.js">
+  </script>
+
   <style>
     html, body {
       margin: 0;
@@ -52,32 +55,105 @@
 
 <body>
 
+  <!-- カメラ映像 -->
   <video id="video" autoplay playsinline></video>
 
+  <!-- 状態表示 -->
   <div id="message">
     カメラを起動しています
   </div>
 
   <script>
 
-  startCamera();
+    const video =
+      document.getElementById("video");
 
-  setTimeout(function() {
+    const message =
+      document.getElementById("message");
 
-    if (typeof cv !== "undefined") {
 
-      message.innerText =
-        "OpenCV.js 読み込み成功";
+    /* =========================
+       カメラ起動
+       ========================= */
 
-    } else {
+    async function startCamera() {
 
-      message.innerText =
-        "OpenCV.js 読み込み失敗";
+      try {
+
+        const stream =
+          await navigator.mediaDevices.getUserMedia({
+
+            video: {
+              facingMode: {
+                ideal: "environment"
+              }
+            },
+
+            audio: false
+
+          });
+
+
+        video.srcObject = stream;
+
+
+        message.innerText =
+          "カメラ起動成功";
+
+
+      } catch (error) {
+
+        console.error(error);
+
+
+        message.innerText =
+          "カメラを起動できませんでした";
+
+      }
 
     }
 
-  }, 5000);
 
-</script>
+    /* =========================
+       OpenCV読み込み確認
+       ========================= */
+
+    function checkOpenCV() {
+
+      if (
+        typeof cv !== "undefined" &&
+        cv.Mat
+      ) {
+
+        console.log(
+          "OpenCV.js 読み込み成功"
+        );
+
+      } else {
+
+        console.log(
+          "OpenCV.js 読み込み中..."
+        );
+
+        setTimeout(
+          checkOpenCV,
+          1000
+        );
+
+      }
+
+    }
+
+
+    /* =========================
+       実行
+       ========================= */
+
+    startCamera();
+
+    checkOpenCV();
+
+  </script>
+
 </body>
 </html>
