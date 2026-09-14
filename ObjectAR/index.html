@@ -1,725 +1,403 @@
 <!DOCTYPE html>
 <html lang="ja">
-
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>展示物認識AR</title>
 
-  <meta name="viewport"
-        content="width=device-width,
-        initial-scale=1.0,
-        maximum-scale=1.0,
-        user-scalable=no">
-
-  <title>展示物認識</title>
-
-  <!-- OpenCV.js -->
   <script src="../opencv.js"></script>
 
   <style>
-
-    html, body {
+    body {
       margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
       background: black;
+      color: white;
+      font-family: sans-serif;
+      text-align: center;
     }
 
     #video {
       width: 100%;
-      height: 100%;
-      object-fit: cover;
+      height: auto;
+      display: block;
     }
 
     #message {
       position: fixed;
       top: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-
-      width: 90%;
-      padding: 15px;
-
-      background: rgba(0, 0, 0, 0.7);
-      color: white;
-
-      text-align: center;
-      font-size: 20px;
-
-      border-radius: 10px;
+      left: 0;
+      width: 100%;
+      font-size: 24px;
+      font-weight: bold;
       z-index: 10;
     }
 
     #score {
       position: fixed;
-      bottom: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-
-      padding: 10px 20px;
-
-      background: rgba(0, 0, 0, 0.7);
-      color: white;
-
+      top: 60px;
+      left: 0;
+      width: 100%;
       font-size: 18px;
-
-      border-radius: 10px;
       z-index: 10;
     }
 
+    #reference1,
+    #reference2,
+    #reference3 {
+      display: none;
+    }
   </style>
-
 </head>
-
 
 <body>
 
-  <!-- カメラ映像 -->
-  <video id="video"
-         autoplay
-         muted
-         playsinline></video>
+  <div id="message">カメラを起動しています...</div>
+  <div id="score">認識スコア：---</div>
 
-  <!-- 状態表示 -->
-  <div id="message">
-    起動しています
-  </div>
+  <video id="video" autoplay muted playsinline></video>
 
-  <!-- 一致度 -->
-  <div id="score">
-    準備中...
-  </div>
+  <!-- 基準画像 -->
+  <img id="reference1" src="assets/reference1.png">
+  <img id="reference2" src="assets/reference2.png">
+  <img id="reference3" src="assets/reference3.png">
+
+  <script>
+
+    const video = document.getElementById("video");
+    const message = document.getElementById("message");
+    const scoreText = document.getElementById("score");
+
+    const referenceImages = [
+      document.getElementById("reference1"),
+      document.getElementById("reference2"),
+      document.getElementById("reference3")
+    ];
+
+    let recognitionCount = 0;
+
+    // -----------------------------
+    // カメラ起動
+    // -----------------------------
+    async function startCamera() {
+
+      try {
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: {
+              ideal: "environment"
+            }
+          },
+          audio: false
+        });
+
+        video.srcObject = stream;
+
+        await video.play();
+
+        message.innerText = "カメラを起動しました";
+
+        checkCamera();
+
+      } catch (error) {
+
+        console.error(error);
+
+        message.innerText =
+          "カメラを起動できません";
+
+      }
+
+    }
 
 
-<script>
+    // -----------------------------
+    // カメラ映像確認
+    // -----------------------------
+    function checkCamera() {
+
+      if (
+        video.videoWidth > 0 &&
+        video.videoHeight > 0
+      ) {
+
+        message.innerText =
+          "展示物をカメラに映してください";
+
+        waitForOpenCV();
+
+      } else {
+
+        setTimeout(checkCamera, 200);
+
+      }
+
+    }
 
 
-/* =================================
-   HTML要素
-   ================================= */
+    // -----------------------------
+    // OpenCV確認
+    // -----------------------------
+    function waitForOpenCV() {
 
-const video =
-  document.getElementById("video");
+      if (
+        typeof cv !== "undefined" &&
+        cv.Mat
+      ) {
 
-const message =
-  document.getElementById("message");
+        console.log("OpenCV.js loaded");
 
-const scoreText =
-  document.getElementById("score");
+        loadReferences();
 
+      } else {
 
-/* =================================
-   変数
-   ================================= */
+        setTimeout(waitForOpenCV, 200);
 
-let referenceImage = null;
+      }
 
-let recognitionStarted = false;
-
-
-/* =================================
-   カメラ起動
-   ================================= */
-
-async function startCamera() {
-
-  try {
-
-    message.innerText =
-      "カメラを起動しています";
+    }
 
 
-    const stream =
-      await navigator.mediaDevices.getUserMedia({
+    // -----------------------------
+    // 基準画像読み込み確認
+    // -----------------------------
+    function loadReferences() {
 
-        video: {
-          facingMode: {
-            ideal: "environment"
+      let loaded = 0;
+
+      referenceImages.forEach((img, index) => {
+
+        if (img.complete) {
+
+          loaded++;
+
+          if (loaded === 3) {
+            startRecognition();
           }
-        },
 
-        audio: false
+        } else {
+
+          img.onload = function() {
+
+            loaded++;
+
+            if (loaded === 3) {
+              startRecognition();
+            }
+
+          };
+
+        }
 
       });
 
-
-    console.log(
-      "カメラストリーム取得成功"
-    );
+    }
 
 
-    video.srcObject = stream;
+    // -----------------------------
+    // 認識開始
+    // -----------------------------
+    function startRecognition() {
 
+      console.log("3枚の基準画像を使用して認識開始");
 
-    /*
-     * iPhoneでカメラ映像を再生
-     */
-
-    video.setAttribute(
-      "playsinline",
-      ""
-    );
-
-    video.setAttribute(
-      "autoplay",
-      ""
-    );
-
-
-    try {
-
-      await video.play();
-
-      console.log(
-        "video.play() 成功"
-      );
-
-    } catch (error) {
-
-      console.error(
-        "video.play() エラー:",
-        error
+      setInterval(
+        recognizeObject,
+        500
       );
 
     }
 
 
-    message.innerText =
-      "カメラ起動成功";
+    // -----------------------------
+    // 展示物認識
+    // -----------------------------
+    function recognizeObject() {
 
+      try {
+
+        // カメラ画像をCanvasへ
+        const canvas =
+          document.createElement("canvas");
 
-    /*
-     * カメラ映像の準備を確認
-     */
+        canvas.width =
+          video.videoWidth;
+
+        canvas.height =
+          video.videoHeight;
 
-    checkCamera();
+        const ctx =
+          canvas.getContext("2d");
 
+        ctx.drawImage(
+          video,
+          0,
+          0,
+          canvas.width,
+          canvas.height
+        );
 
-  } catch (error) {
 
-    console.error(
-      "カメラ起動エラー:",
-      error
-    );
+        // カメラ画像
+        const camera =
+          cv.imread(canvas);
 
+        const cameraGray =
+          new cv.Mat();
 
-    message.innerText =
-      "カメラを起動できませんでした";
+        cv.cvtColor(
+          camera,
+          cameraGray,
+          cv.COLOR_RGBA2GRAY
+        );
 
 
-    scoreText.innerText =
-      error.message;
+        let maxScore = 0;
 
-  }
 
-}
+        // -----------------------------
+        // 3枚の基準画像を比較
+        // -----------------------------
+        referenceImages.forEach(
+          (referenceImage) => {
 
+            const reference =
+              cv.imread(referenceImage);
 
-/* =================================
-   カメラ準備確認
-   ================================= */
+            const referenceGray =
+              new cv.Mat();
 
-function checkCamera() {
+            cv.cvtColor(
+              reference,
+              referenceGray,
+              cv.COLOR_RGBA2GRAY
+            );
 
-  console.log(
-    "readyState:",
-    video.readyState
-  );
 
-  console.log(
-    "videoWidth:",
-    video.videoWidth
-  );
+            // 基準画像をカメラ幅の25%程度に縮小
+            const targetWidth =
+              Math.floor(
+                camera.cols * 0.25
+              );
 
-  console.log(
-    "videoHeight:",
-    video.videoHeight
-  );
+            const targetHeight =
+              Math.floor(
+                referenceGray.rows *
+                targetWidth /
+                referenceGray.cols
+              );
 
+            const template =
+              new cv.Mat();
 
-  /*
-   * カメラ映像の幅と高さが取得できたら
-   * 認識開始
-   */
+            cv.resize(
+              referenceGray,
+              template,
+              new cv.Size(
+                targetWidth,
+                targetHeight
+              )
+            );
 
-  if (
-    video.videoWidth > 0 &&
-    video.videoHeight > 0
-  ) {
 
-    console.log(
-      "カメラ映像取得成功"
-    );
+            // テンプレートマッチング
+            if (
+              template.cols <= cameraGray.cols &&
+              template.rows <= cameraGray.rows
+            ) {
 
+              const result =
+                new cv.Mat();
 
-    message.innerText =
-      "カメラ映像準備完了";
+              cv.matchTemplate(
+                cameraGray,
+                template,
+                result,
+                cv.TM_CCOEFF_NORMED
+              );
 
+              const minMax =
+                cv.minMaxLoc(result);
 
-    scoreText.innerText =
-      "認識を準備しています";
+              if (
+                minMax.maxVal >
+                maxScore
+              ) {
 
+                maxScore =
+                  minMax.maxVal;
 
-    startRecognition();
+              }
 
+              result.delete();
 
-  } else {
+            }
 
-    /*
-     * まだ映像が取得できない場合
-     * 100ms後にもう一度確認
-     */
 
-    setTimeout(
-      checkCamera,
-      100
-    );
+            reference.delete();
+            referenceGray.delete();
+            template.delete();
 
-  }
+          }
+        );
 
-}
 
+        // -----------------------------
+        // 結果表示
+        // -----------------------------
+        scoreText.innerText =
+          "認識スコア：" +
+          maxScore.toFixed(2);
 
-/* =================================
-   OpenCV.js確認
-   ================================= */
 
-function waitForOpenCV() {
+        // 3回連続認識
+        if (maxScore >= 0.45) {
 
-  if (
-    typeof cv !== "undefined" &&
-    cv.Mat
-  ) {
+          recognitionCount++;
 
-    console.log(
-      "OpenCV.js読み込み成功"
-    );
+          if (recognitionCount >= 3) {
 
+            message.innerText =
+              "展示物を認識しました";
 
-    message.innerText =
-      "OpenCV.js読み込み成功";
+          } else {
 
+            message.innerText =
+              "認識中...";
 
-    scoreText.innerText =
-      "基準画像を読み込んでいます";
+          }
 
+        } else {
 
-    loadReference();
+          recognitionCount = 0;
 
+          message.innerText =
+            "展示物を認識できません";
 
-  } else {
+        }
 
-    console.log(
-      "OpenCV.js読み込み待機中"
-    );
 
+        camera.delete();
+        cameraGray.delete();
 
-    message.innerText =
-      "OpenCV.js読み込み中";
+      } catch (error) {
 
+        console.error(
+          "認識エラー：",
+          error
+        );
 
-    setTimeout(
-      waitForOpenCV,
-      500
-    );
-
-  }
-
-}
-
-
-/* =================================
-   基準画像読み込み
-   ================================= */
-
-function loadReference() {
-
-  const img =
-    new Image();
-
-
-  img.onload = function() {
-
-    console.log(
-      "reference.png読み込み成功"
-    );
-
-
-    referenceImage =
-      img;
-
-
-    message.innerText =
-      "基準画像読み込み成功";
-
-
-    scoreText.innerText =
-      "カメラ映像を待っています";
-
-
-    /*
-     * カメラがすでに準備できているか確認
-     */
-
-    checkCamera();
-
-
-  };
-
-
-  img.onerror = function(error) {
-
-    console.error(
-      "reference.png読み込み失敗",
-      error
-    );
-
-
-    message.innerText =
-      "reference.pngを読み込めません";
-
-
-    scoreText.innerText =
-      "assets/reference.pngを確認してください";
-
-  };
-
-
-  /*
-   * PNGを読み込む
-   */
-
-  img.src =
-    "assets/reference.png";
-
-}
-
-
-/* =================================
-   認識開始
-   ================================= */
-
-function startRecognition() {
-
-  /*
-   * すでに開始していたら終了
-   */
-
-  if (recognitionStarted) {
-
-    return;
-
-  }
-
-
-  /*
-   * 基準画像がまだない場合
-   */
-
-  if (!referenceImage) {
-
-    return;
-
-  }
-
-
-  /*
-   * カメラ映像がまだない場合
-   */
-
-  if (
-    video.videoWidth <= 0 ||
-    video.videoHeight <= 0
-  ) {
-
-    return;
-
-  }
-
-
-  recognitionStarted =
-    true;
-
-
-  console.log(
-    "認識開始"
-  );
-
-
-  message.innerText =
-    "展示物をカメラに映してください";
-
-
-  scoreText.innerText =
-    "認識準備完了";
-
-
-  /*
-   * 0.5秒ごとに認識
-   */
-
-  setInterval(
-    recognizeObject,
-    500
-  );
-
-}
-
-
-/* =================================
-   展示物認識
-   ================================= */
-
-function recognizeObject() {
-
-  /*
-   * カメラが準備できていなければ終了
-   */
-
-  if (
-    !referenceImage ||
-    video.videoWidth <= 0 ||
-    video.videoHeight <= 0
-  ) {
-
-    return;
-
-  }
-
-
-  try {
-
-    /* =============================
-       基準画像を読み込む
-       ============================= */
-
-    const reference =
-      cv.imread(referenceImage);
-
-
-    /* =============================
-       基準画像をグレースケール化
-       ============================= */
-
-    const referenceGray =
-      new cv.Mat();
-
-
-    cv.cvtColor(
-      reference,
-      referenceGray,
-      cv.COLOR_RGBA2GRAY
-    );
-
-
-    /* =============================
-       カメラ画像を取得
-       ============================= */
-
-    const canvas =
-      document.createElement("canvas");
-
-
-    canvas.width =
-      video.videoWidth;
-
-    canvas.height =
-      video.videoHeight;
-
-
-    const ctx =
-      canvas.getContext("2d");
-
-
-    ctx.drawImage(
-      video,
-      0,
-      0,
-      canvas.width,
-      canvas.height
-    );
-
-
-    const camera =
-      cv.imread(canvas);
-
-
-    /* =============================
-       カメラ画像をグレースケール化
-       ============================= */
-
-    const cameraGray =
-      new cv.Mat();
-
-
-    cv.cvtColor(
-      camera,
-      cameraGray,
-      cv.COLOR_RGBA2GRAY
-    );
-
-
-    /* =============================
-       基準画像を縮小
-       ============================= */
-
-    const template =
-      new cv.Mat();
-
-
-    const templateWidth =
-      Math.floor(
-        cameraGray.cols * 0.25
-      );
-
-
-    const templateHeight =
-      Math.floor(
-        referenceGray.rows *
-        templateWidth /
-        referenceGray.cols
-      );
-
-
-    /*
-     * サイズ確認
-     */
-
-    if (
-      templateWidth <= 0 ||
-      templateHeight <= 0 ||
-      templateWidth >= cameraGray.cols ||
-      templateHeight >= cameraGray.rows
-    ) {
-
-      reference.delete();
-      referenceGray.delete();
-      camera.delete();
-      cameraGray.delete();
-      template.delete();
-
-      return;
+      }
 
     }
 
 
-    cv.resize(
-      referenceGray,
-      template,
-      new cv.Size(
-        templateWidth,
-        templateHeight
-      )
-    );
+    // -----------------------------
+    // 開始
+    // -----------------------------
+    startCamera();
 
-
-    /* =============================
-       テンプレートマッチング
-       ============================= */
-
-    const result =
-      new cv.Mat();
-
-
-    cv.matchTemplate(
-      cameraGray,
-      template,
-      result,
-      cv.TM_CCOEFF_NORMED
-    );
-
-
-    /* =============================
-       最大一致度
-       ============================= */
-
-    const minMax =
-      cv.minMaxLoc(result);
-
-
-    const maxScore =
-      minMax.maxVal;
-
-
-    console.log(
-      "一致度:",
-      maxScore.toFixed(2)
-    );
-
-
-    /* =============================
-       認識判定
-       ============================= */
-
-    if (
-      maxScore >= 0.70
-    ) {
-
-      message.innerText =
-        "展示物を認識しました";
-
-    } else {
-
-      message.innerText =
-        "展示物を認識できません";
-
-    }
-
-
-    scoreText.innerText =
-      "一致度：" +
-      maxScore.toFixed(2);
-
-
-    /* =============================
-       メモリ解放
-       ============================= */
-
-    reference.delete();
-
-    referenceGray.delete();
-
-    camera.delete();
-
-    cameraGray.delete();
-
-    template.delete();
-
-    result.delete();
-
-
-  } catch (error) {
-
-    console.error(
-      "認識処理エラー:",
-      error
-    );
-
-
-    message.innerText =
-      "認識処理でエラーが発生しました";
-
-
-    scoreText.innerText =
-      error.message;
-
-  }
-
-}
-
-
-/* =================================
-   実行
-   ================================= */
-
-startCamera();
-
-waitForOpenCV();
-
-
-</script>
+  </script>
 
 </body>
-
 </html>
