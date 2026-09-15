@@ -4,9 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <title>展示物認識AR</title>
+  <title>展示物認識</title>
 
-  <!-- OpenCV.js -->
   <script src="../opencv.js"></script>
 
   <style>
@@ -20,16 +19,15 @@
 
     #video {
       width: 100%;
-      height: auto;
       display: block;
     }
 
     #message {
       position: fixed;
-      top: 20px;
+      top: 15px;
       left: 0;
       width: 100%;
-      font-size: 24px;
+      font-size: 22px;
       font-weight: bold;
       z-index: 10;
       text-shadow: 1px 1px 3px black;
@@ -37,7 +35,7 @@
 
     #score {
       position: fixed;
-      top: 60px;
+      top: 55px;
       left: 0;
       width: 100%;
       font-size: 18px;
@@ -45,7 +43,16 @@
       text-shadow: 1px 1px 3px black;
     }
 
-    /* 基準画像は画面には表示しない */
+    #loadStatus {
+      position: fixed;
+      bottom: 15px;
+      left: 0;
+      width: 100%;
+      font-size: 16px;
+      z-index: 10;
+      text-shadow: 1px 1px 3px black;
+    }
+
     .reference {
       display: none;
     }
@@ -62,6 +69,10 @@
     認識スコア：---
   </div>
 
+  <div id="loadStatus">
+    基準画像を確認しています...
+  </div>
+
   <video
     id="video"
     autoplay
@@ -70,10 +81,7 @@
   </video>
 
 
-  <!-- =========================
-       基準画像3枚
-       ========================= -->
-
+  <!-- 基準画像 -->
   <img
     id="reference1"
     class="reference"
@@ -92,10 +100,6 @@
 
   <script>
 
-    // =========================
-    // 要素取得
-    // =========================
-
     const video =
       document.getElementById("video");
 
@@ -104,6 +108,9 @@
 
     const scoreText =
       document.getElementById("score");
+
+    const loadStatus =
+      document.getElementById("loadStatus");
 
 
     const referenceImages = [
@@ -117,13 +124,12 @@
     ];
 
 
-    // 連続認識回数
     let recognitionCount = 0;
 
 
-    // =========================
+    // ==================================
     // カメラ起動
-    // =========================
+    // ==================================
 
     async function startCamera() {
 
@@ -144,7 +150,6 @@
 
 
         video.srcObject = stream;
-
 
         await video.play();
 
@@ -168,9 +173,9 @@
     }
 
 
-    // =========================
-    // カメラ映像確認
-    // =========================
+    // ==================================
+    // カメラ確認
+    // ==================================
 
     function checkCamera() {
 
@@ -182,9 +187,7 @@
         message.innerText =
           "展示物をカメラに映してください";
 
-
         waitForOpenCV();
-
 
       } else {
 
@@ -198,9 +201,9 @@
     }
 
 
-    // =========================
+    // ==================================
     // OpenCV確認
-    // =========================
+    // ==================================
 
     function waitForOpenCV() {
 
@@ -213,9 +216,7 @@
           "OpenCV.js loaded"
         );
 
-
         loadReferences();
-
 
       } else {
 
@@ -229,9 +230,9 @@
     }
 
 
-    // =========================
-    // 基準画像読み込み
-    // =========================
+    // ==================================
+    // 3枚の画像を確認
+    // ==================================
 
     function loadReferences() {
 
@@ -241,28 +242,28 @@
       referenceImages.forEach(
         (img, index) => {
 
-
-          function imageLoaded() {
+          function success() {
 
             loaded++;
 
-
             console.log(
-              "基準画像 " +
+              "reference" +
               (index + 1) +
-              " 読み込み完了"
+              ".png OK"
             );
+
+            loadStatus.innerText =
+              "基準画像 " +
+              loaded +
+              " / 3 読み込み完了";
 
 
             if (
-              loaded ===
-              referenceImages.length
+              loaded === 3
             ) {
 
-              console.log(
-                "3枚すべて読み込み完了"
-              );
-
+              loadStatus.innerText =
+                "3枚の基準画像を読み込みました";
 
               startRecognition();
 
@@ -271,32 +272,36 @@
           }
 
 
-          // すでに読み込まれている場合
+          function failed() {
+
+            console.error(
+              "reference" +
+              (index + 1) +
+              ".png 読み込み失敗"
+            );
+
+            loadStatus.innerText =
+              "reference" +
+              (index + 1) +
+              ".png が読み込めません";
+
+          }
+
+
           if (
             img.complete &&
             img.naturalWidth > 0
           ) {
 
-            imageLoaded();
-
+            success();
 
           } else {
 
-            // これから読み込む場合
             img.onload =
-              imageLoaded;
-
+              success;
 
             img.onerror =
-              function() {
-
-                console.error(
-                  "基準画像 " +
-                  (index + 1) +
-                  " の読み込みに失敗"
-                );
-
-              };
+              failed;
 
           }
 
@@ -306,14 +311,14 @@
     }
 
 
-    // =========================
+    // ==================================
     // 認識開始
-    // =========================
+    // ==================================
 
     function startRecognition() {
 
       console.log(
-        "3枚の基準画像を使用して認識開始"
+        "認識開始"
       );
 
 
@@ -321,6 +326,11 @@
         "展示物をカメラに映してください";
 
 
+      // 最初の1回をすぐ実行
+      recognizeObject();
+
+
+      // 0.5秒ごと
       setInterval(
         recognizeObject,
         500
@@ -329,18 +339,17 @@
     }
 
 
-    // =========================
+    // ==================================
     // 展示物認識
-    // =========================
+    // ==================================
 
     function recognizeObject() {
 
       try {
 
-
-        // -------------------------
-        // Canvas作成
-        // -------------------------
+        // ------------------------------
+        // Canvas
+        // ------------------------------
 
         const canvas =
           document.createElement("canvas");
@@ -358,21 +367,17 @@
 
 
         ctx.drawImage(
-
           video,
-
           0,
           0,
-
           canvas.width,
           canvas.height
-
         );
 
 
-        // -------------------------
+        // ------------------------------
         // カメラ画像
-        // -------------------------
+        // ------------------------------
 
         const camera =
           cv.imread(canvas);
@@ -383,56 +388,39 @@
 
 
         cv.cvtColor(
-
           camera,
-
           cameraGray,
-
           cv.COLOR_RGBA2GRAY
-
         );
 
-
-        // -------------------------
-        // 最大スコア
-        // -------------------------
 
         let maxScore = 0;
 
 
-        // =========================
-        // 3枚を順番に比較
-        // =========================
+        // ------------------------------
+        // 3枚を比較
+        // ------------------------------
 
         referenceImages.forEach(
           (referenceImage) => {
 
-
-            // 基準画像
             const reference =
               cv.imread(referenceImage);
 
 
-            // グレースケール
             const referenceGray =
               new cv.Mat();
 
 
             cv.cvtColor(
-
               reference,
-
               referenceGray,
-
               cv.COLOR_RGBA2GRAY
-
             );
 
 
-            // -------------------------
-            // 基準画像を縮小
-            // -------------------------
-
+            // 基準画像の幅
+            // カメラ画像の25%
             const targetWidth =
               Math.floor(
                 camera.cols * 0.25
@@ -443,9 +431,7 @@
               Math.floor(
 
                 referenceGray.rows *
-
                 targetWidth /
-
                 referenceGray.cols
 
               );
@@ -462,19 +448,12 @@
               template,
 
               new cv.Size(
-
                 targetWidth,
-
                 targetHeight
-
               )
 
             );
 
-
-            // -------------------------
-            // サイズ確認
-            // -------------------------
 
             if (
 
@@ -486,14 +465,9 @@
 
             ) {
 
-
               const result =
                 new cv.Mat();
 
-
-              // -------------------------
-              // テンプレートマッチング
-              // -------------------------
 
               cv.matchTemplate(
 
@@ -512,7 +486,6 @@
                 cv.minMaxLoc(result);
 
 
-              // 一番高い値を保存
               if (
                 minMax.maxVal >
                 maxScore
@@ -529,10 +502,6 @@
             }
 
 
-            // -------------------------
-            // メモリ解放
-            // -------------------------
-
             reference.delete();
 
             referenceGray.delete();
@@ -543,25 +512,22 @@
         );
 
 
-        // =========================
+        // ------------------------------
         // スコア表示
-        // =========================
+        // ------------------------------
 
         scoreText.innerText =
-
           "認識スコア：" +
-
           maxScore.toFixed(2);
 
 
-        // =========================
-        // 認識判定
-        // =========================
+        // ------------------------------
+        // 判定
+        // ------------------------------
 
         if (
           maxScore >= 0.45
         ) {
-
 
           recognitionCount++;
 
@@ -573,7 +539,6 @@
             message.innerText =
               "展示物を認識しました";
 
-
           } else {
 
             message.innerText =
@@ -581,22 +546,15 @@
 
           }
 
-
         } else {
 
-
           recognitionCount = 0;
-
 
           message.innerText =
             "展示物を認識できません";
 
         }
 
-
-        // -------------------------
-        // カメラ画像解放
-        // -------------------------
 
         camera.delete();
 
@@ -615,9 +573,9 @@
     }
 
 
-    // =========================
-    // プログラム開始
-    // =========================
+    // ==================================
+    // 開始
+    // ==================================
 
     startCamera();
 
