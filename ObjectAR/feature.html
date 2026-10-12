@@ -78,7 +78,7 @@ async function initialize(readyCV) {
   cvx = readyCV;
 
   try {
-    orb = new cvx.ORB();
+    orb = new cvx.ORB(1000);
     matcher = new cvx.BFMatcher(cvx.NORM_HAMMING, false);
 
     await waitForImages();
