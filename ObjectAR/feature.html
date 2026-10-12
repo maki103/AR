@@ -1,0 +1,299 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>展示物認識・特徴点マッチング</title>
+
+  <script src="../opencv.js"></script>
+
+  <style>
+    body {
+      margin: 0;
+      background: #111;
+      color: white;
+      font-family: sans-serif;
+      text-align: center;
+    }
+
+    #video {
+      display: block;
+      width: 100%;
+    }
+
+    #message, #score, #status {
+      padding: 8px;
+    }
+
+    #message {
+      font-size: 20px;
+      font-weight: bold;
+    }
+
+    #score {
+      font-size: 16px;
+    }
+
+    #status {
+      font-size: 14px;
+    }
+
+    .reference {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="message">準備中...</div>
+  <div id="score">対応点数：---</div>
+  <div id="status">OpenCV.jsを読み込んでいます</div>
+
+  <video id="video" autoplay muted playsinline></video>
+
+  <img class="reference" id="reference1" src="assets/reference1.png">
+  <img class="reference" id="reference2" src="assets/reference2.png">
+  <img class="reference" id="reference3" src="assets/reference3.png">
+
+<script>
+const video = document.getElementById("video");
+const message = document.getElementById("message");
+const scoreText = document.getElementById("score");
+const statusText = document.getElementById("status");
+
+const images = [
+  document.getElementById("reference1"),
+  document.getElementById("reference2"),
+  document.getElementById("reference3")
+];
+
+let orb = null;
+let matcher = null;
+let references = [];
+let busy = false;
+let lastRun = 0;
+
+function waitForOpenCV() {
+  if (typeof cv === "undefined" || !cv.Mat) {
+    setTimeout(waitForOpenCV, 200);
+    return;
+  }
+
+  // 一部のOpenCV.jsビルドでは初期化完了を待つ必要がある
+  if (cv.Mat && cv.ORB_create && cv.BFMatcher) {
+    initialize();
+  } else {
+    statusText.textContent =
+      "OpenCV.jsの初期化中、または必要な機能がありません";
+    setTimeout(waitForOpenCV, 500);
+  }
+}
+
+function initialize() {
+  try {
+    orb = new cv.ORB_create();
+    matcher = new cv.BFMatcher(cv.NORM_HAMMING, false);
+
+    let loaded = 0;
+
+    images.forEach((img, index) => {
+      const onReady = () => {
+        loaded++;
+
+        if (loaded === images.length) {
+          prepareReferences();
+        }
+      };
+
+      if (img.complete && img.naturalWidth > 0) {
+        onReady();
+      } else {
+        img.onload = onReady;
+        img.onerror = () => {
+          statusText.textContent =
+            `基準画像${index + 1}を読み込めません`;
+        };
+      }
+    });
+  } catch (error) {
+    console.error(error);
+    statusText.textContent =
+      "ORBの初期化に失敗しました。コンソールを確認してください";
+  }
+}
+
+function prepareReferences() {
+  try {
+    references = images.map(img => {
+      const mat = cv.imread(img);
+      const gray = new cv.Mat();
+      const keypoints = new cv.KeyPointVector();
+      const descriptors = new cv.Mat();
+
+      cv.cvtColor(mat, gray, cv.COLOR_RGBA2GRAY);
+      orb.detectAndCompute(
+        gray,
+        new cv.Mat(),
+        keypoints,
+        descriptors
+      );
+
+      mat.delete();
+      gray.delete();
+      keypoints.delete();
+
+      return descriptors;
+    });
+
+    statusText.textContent =
+      "基準画像3枚の特徴点を準備しました";
+
+    startCamera();
+  } catch (error) {
+    console.error(error);
+    statusText.textContent =
+      "基準画像の処理に失敗しました";
+  }
+}
+
+async function startCamera() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: "environment" } },
+      audio: false
+    });
+
+    video.srcObject = stream;
+    await video.play();
+
+    message.textContent = "展示物をカメラに映してください";
+    requestAnimationFrame(loop);
+  } catch (error) {
+    console.error(error);
+    message.textContent = "カメラを起動できません";
+  }
+}
+
+function loop(timestamp) {
+  requestAnimationFrame(loop);
+
+  if (
+    busy ||
+    video.readyState < 2 ||
+    timestamp - lastRun < 500
+  ) {
+    return;
+  }
+
+  lastRun = timestamp;
+  busy = true;
+
+  try {
+    recognize();
+  } catch (error) {
+    console.error(error);
+    statusText.textContent = "認識処理でエラーが発生しました";
+  } finally {
+    busy = false;
+  }
+}
+
+function recognize() {
+  const frame = document.createElement("canvas");
+  frame.width = video.videoWidth;
+  frame.height = video.videoHeight;
+
+  const ctx = frame.getContext("2d");
+  ctx.drawImage(video, 0, 0, frame.width, frame.height);
+
+  const src = cv.imread(frame);
+  const gray = new cv.Mat();
+  const keypoints = new cv.KeyPointVector();
+  const descriptors = new cv.Mat();
+  const mask = new cv.Mat();
+
+  let bestCount = 0;
+  let bestIndex = -1;
+
+  try {
+    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+
+    orb.detectAndCompute(
+      gray, mask, keypoints, descriptors
+    );
+
+    if (
+      descriptors.empty() ||
+      descriptors.rows === 0
+    ) {
+      scoreText.textContent = "対応点数：0";
+      message.textContent = "特徴点を検出できません";
+      return;
+    }
+
+    references.forEach((ref, index) => {
+      if (ref.empty() || ref.rows === 0) return;
+
+      const matches = new cv.DMatchVectorVector();
+
+      try {
+        matcher.knnMatch(
+          descriptors,
+          ref,
+          matches,
+          2
+        );
+
+        let goodCount = 0;
+
+        for (let i = 0; i < matches.size(); i++) {
+          const pair = matches.get(i);
+
+          if (pair.size() >= 2) {
+            const first = pair.get(0);
+            const second = pair.get(1);
+
+            // Lowe's ratio test
+            if (first.distance < 0.75 * second.distance) {
+              goodCount++;
+            }
+          }
+
+          pair.delete();
+        }
+
+        if (goodCount > bestCount) {
+          bestCount = goodCount;
+          bestIndex = index;
+        }
+      } finally {
+        matches.delete();
+      }
+    });
+
+    scoreText.textContent =
+      `良好な対応点数：${bestCount}`;
+
+    statusText.textContent =
+      `基準画像：${bestIndex < 0 ? "---" : bestIndex + 1}`;
+
+    // この値は仮の目安。実験結果を見て調整する
+    if (bestCount >= 15) {
+      message.textContent = "特徴点が一致しました";
+    } else {
+      message.textContent = "十分な一致を確認できません";
+    }
+  } finally {
+    src.delete();
+    gray.delete();
+    keypoints.delete();
+    descriptors.delete();
+    mask.delete();
+  }
+}
+
+waitForOpenCV();
+</script>
+</body>
+</html>
