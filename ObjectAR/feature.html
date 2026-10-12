@@ -3,11 +3,9 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>展示物認識・特徴点マッチング</title>
-
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>展示物認識・ORB特徴点マッチング</title>
   <script src="./opencv-3.0.0-standalone.js"></script>
-
   <style>
     body {
       margin: 0;
@@ -16,39 +14,25 @@
       font-family: sans-serif;
       text-align: center;
     }
-
     #video {
       display: block;
       width: 100%;
+      max-height: 70vh;
+      object-fit: contain;
     }
-
     #message, #score, #status {
       padding: 8px;
     }
-
-    #message {
-      font-size: 20px;
-      font-weight: bold;
-    }
-
-    #score {
-      font-size: 16px;
-    }
-
-    #status {
-      font-size: 14px;
-    }
-
-    .reference {
-      display: none;
-    }
+    #message { font-size: 20px; font-weight: bold; }
+    #score { font-size: 18px; }
+    #status { font-size: 14px; }
+    .reference { display: none; }
   </style>
 </head>
 <body>
-
   <div id="message">準備中...</div>
-  <div id="score">対応点数：---</div>
-  <div id="status">OpenCV.jsを読み込んでいます</div>
+  <div id="score">良好な対応点数：---</div>
+  <div id="status">OpenCVを初期化しています</div>
 
   <video id="video" autoplay muted playsinline></video>
 
@@ -68,121 +52,97 @@ const images = [
   document.getElementById("reference3")
 ];
 
-let orb = null;
-let matcher = null;
+let cvx;
+let orb;
+let matcher;
 let references = [];
 let busy = false;
 let lastRun = 0;
 
-function waitForOpenCV() {
-  if (typeof cv === "undefined" || !cv.Mat) {
-    setTimeout(waitForOpenCV, 200);
-    return;
-  }
+function waitForImages() {
+  return Promise.all(images.map((img, i) => {
+    if (img.complete && img.naturalWidth > 0) {
+      return Promise.resolve();
+    }
 
-  // 一部のOpenCV.jsビルドでは初期化完了を待つ必要がある
-  if (cv.Mat && cv.ORB_create && cv.BFMatcher) {
-    initialize();
-  } else {
-    statusText.textContent =
-      "OpenCV.jsの初期化中、または必要な機能がありません";
-    setTimeout(waitForOpenCV, 500);
-  }
+    return new Promise((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(
+        new Error("基準画像" + (i + 1) + "を読み込めません")
+      );
+    });
+  }));
 }
 
-function initialize() {
+async function initialize(readyCV) {
+  cvx = readyCV;
+
   try {
-    orb = new cv.ORB_create();
-    matcher = new cv.BFMatcher(cv.NORM_HAMMING, false);
+    orb = new cvx.ORB();
+    matcher = new cvx.BFMatcher(cvx.NORM_HAMMING, false);
 
-    let loaded = 0;
-
-    images.forEach((img, index) => {
-      const onReady = () => {
-        loaded++;
-
-        if (loaded === images.length) {
-          prepareReferences();
-        }
-      };
-
-      if (img.complete && img.naturalWidth > 0) {
-        onReady();
-      } else {
-        img.onload = onReady;
-        img.onerror = () => {
-          statusText.textContent =
-            `基準画像${index + 1}を読み込めません`;
-        };
-      }
-    });
+    await waitForImages();
+    prepareReferences();
+    await startCamera();
   } catch (error) {
     console.error(error);
-    statusText.textContent =
-      "ORBの初期化に失敗しました。コンソールを確認してください";
+    statusText.textContent = "初期化エラー：" + error.message;
+    message.textContent = "起動できませんでした";
   }
 }
 
 function prepareReferences() {
-  try {
-    references = images.map(img => {
-      const mat = cv.imread(img);
-      const gray = new cv.Mat();
-      const keypoints = new cv.KeyPointVector();
-      const descriptors = new cv.Mat();
+  references = images.map((img) => {
+    const src = cvx.imread(img);
+    const gray = new cvx.Mat();
+    const keypoints = new cvx.KeyPointVector();
+    const descriptors = new cvx.Mat();
+    const mask = new cvx.Mat();
 
-      cv.cvtColor(mat, gray, cv.COLOR_RGBA2GRAY);
-      orb.detectAndCompute(
-        gray,
-        new cv.Mat(),
-        keypoints,
-        descriptors
-      );
+    try {
+      cvx.cvtColor(src, gray, cvx.COLOR_RGBA2GRAY);
+      orb.detectAndCompute(gray, mask, keypoints, descriptors);
 
-      mat.delete();
+      if (descriptors.empty() || descriptors.rows === 0) {
+        throw new Error("基準画像から特徴点を検出できません");
+      }
+
+      const result = descriptors.clone();
+      console.log("基準画像の特徴点数：", result.rows);
+      return result;
+    } finally {
+      src.delete();
       gray.delete();
       keypoints.delete();
+      descriptors.delete();
+      mask.delete();
+    }
+  });
 
-      return descriptors;
-    });
-
-    statusText.textContent =
-      "基準画像3枚の特徴点を準備しました";
-
-    startCamera();
-  } catch (error) {
-    console.error(error);
-    statusText.textContent =
-      "基準画像の処理に失敗しました";
-  }
+  statusText.textContent = "基準画像3枚の特徴量を準備しました";
 }
 
 async function startCamera() {
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: "environment" } },
-      audio: false
-    });
-
-    video.srcObject = stream;
-    await video.play();
-
-    message.textContent = "展示物をカメラに映してください";
-    requestAnimationFrame(loop);
-  } catch (error) {
-    console.error(error);
-    message.textContent = "カメラを起動できません";
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error("カメラ機能が利用できません。HTTPSで開いてください");
   }
+
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: { ideal: "environment" } },
+    audio: false
+  });
+
+  video.srcObject = stream;
+  await video.play();
+
+  message.textContent = "展示物をカメラに映してください";
+  requestAnimationFrame(loop);
 }
 
 function loop(timestamp) {
   requestAnimationFrame(loop);
 
-  if (
-    busy ||
-    video.readyState < 2 ||
-    timestamp - lastRun < 500
-  ) {
+  if (busy || video.readyState < 2 || timestamp - lastRun < 500) {
     return;
   }
 
@@ -193,74 +153,61 @@ function loop(timestamp) {
     recognize();
   } catch (error) {
     console.error(error);
-    statusText.textContent = "認識処理でエラーが発生しました";
+    statusText.textContent = "認識エラー：" + error.message;
   } finally {
     busy = false;
   }
 }
 
 function recognize() {
-  const frame = document.createElement("canvas");
-  frame.width = video.videoWidth;
-  frame.height = video.videoHeight;
+  const canvas = document.createElement("canvas");
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext("2d").drawImage(video, 0, 0);
 
-  const ctx = frame.getContext("2d");
-  ctx.drawImage(video, 0, 0, frame.width, frame.height);
-
-  const src = cv.imread(frame);
-  const gray = new cv.Mat();
-  const keypoints = new cv.KeyPointVector();
-  const descriptors = new cv.Mat();
-  const mask = new cv.Mat();
+  const src = cvx.imread(canvas);
+  const gray = new cvx.Mat();
+  const keypoints = new cvx.KeyPointVector();
+  const descriptors = new cvx.Mat();
+  const mask = new cvx.Mat();
 
   let bestCount = 0;
   let bestIndex = -1;
 
   try {
-    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+    cvx.cvtColor(src, gray, cvx.COLOR_RGBA2GRAY);
+    orb.detectAndCompute(gray, mask, keypoints, descriptors);
 
-    orb.detectAndCompute(
-      gray, mask, keypoints, descriptors
-    );
-
-    if (
-      descriptors.empty() ||
-      descriptors.rows === 0
-    ) {
-      scoreText.textContent = "対応点数：0";
+    if (descriptors.empty() || descriptors.rows === 0) {
+      scoreText.textContent = "良好な対応点数：0";
       message.textContent = "特徴点を検出できません";
+      statusText.textContent = "照明やカメラの向きを変えてください";
       return;
     }
 
     references.forEach((ref, index) => {
-      if (ref.empty() || ref.rows === 0) return;
-
-      const matches = new cv.DMatchVectorVector();
+      const matches = new cvx.DMatchVectorVector();
 
       try {
-        matcher.knnMatch(
-          descriptors,
-          ref,
-          matches,
-          2
-        );
+        matcher.knnMatch(descriptors, ref, matches, 2);
 
         let goodCount = 0;
 
         for (let i = 0; i < matches.size(); i++) {
           const pair = matches.get(i);
 
-          if (pair.size() >= 2) {
-            const first = pair.get(0);
-            const second = pair.get(1);
+          try {
+            if (pair.size() >= 2) {
+              const first = pair.get(0);
+              const second = pair.get(1);
 
-            // Lowe's ratio test
-            if (first.distance < 0.75 * second.distance) {
-              goodCount++;
+              if (first.distance < 0.75 * second.distance) {
+                goodCount++;
+              }
             }
+          } finally {
+            pair.delete();
           }
-
-          pair.delete();
         }
 
         if (goodCount > bestCount) {
@@ -272,18 +219,15 @@ function recognize() {
       }
     });
 
-    scoreText.textContent =
-      `良好な対応点数：${bestCount}`;
+    scoreText.textContent = "良好な対応点数：" + bestCount;
+    statusText.textContent = bestIndex < 0
+      ? "基準画像：未一致"
+      : "最も一致した基準画像：" + (bestIndex + 1);
 
-    statusText.textContent =
-      `基準画像：${bestIndex < 0 ? "---" : bestIndex + 1}`;
-
-    // この値は仮の目安。実験結果を見て調整する
-    if (bestCount >= 15) {
-      message.textContent = "特徴点が一致しました";
-    } else {
-      message.textContent = "十分な一致を確認できません";
-    }
+    // 仮の判定値。実測後に調整します。
+    message.textContent = bestCount >= 15
+      ? "特徴点が一致しました"
+      : "十分な一致を確認できません";
   } finally {
     src.delete();
     gray.delete();
@@ -293,7 +237,10 @@ function recognize() {
   }
 }
 
-waitForOpenCV();
+cv.then(initialize).catch(error => {
+  console.error(error);
+  statusText.textContent = "OpenCVの初期化に失敗しました";
+});
 </script>
 </body>
 </html>
