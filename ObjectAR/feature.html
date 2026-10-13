@@ -225,7 +225,7 @@ function recognize() {
       : "基準画像との照合完了";
 
     // 仮の判定値。実測後に調整します。
-    message.textContent = bestCount >= 10
+    message.textContent = bestCount >= 15
       ? "特徴点が一致しました"
       : "十分な一致を確認できません";
   } finally {
