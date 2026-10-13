@@ -222,10 +222,10 @@ function recognize() {
     scoreText.textContent = "良好な対応点数：" + bestCount;
     statusText.textContent = bestIndex < 0
       ? "基準画像：未一致"
-      : "最も一致した基準画像：" + (bestIndex + 1);
+      ;
 
     // 仮の判定値。実測後に調整します。
-    message.textContent = bestCount >= 15
+    message.textContent = bestCount >= 10
       ? "特徴点が一致しました"
       : "十分な一致を確認できません";
   } finally {
