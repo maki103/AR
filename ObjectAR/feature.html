@@ -121,24 +121,23 @@ function waitForImages() {
 }
 
 // ORB特徴点の座標をJavaScript配列に保存する
+  
 function getKeypointCoordinates(keypoints) {
   const points = [];
 
   for (let i = 0; i < keypoints.size(); i++) {
     const kp = keypoints.get(i);
 
-    try {
-      points.push({
-        x: kp.pt.x,
-        y: kp.pt.y
-      });
-    } finally {
-      kp.delete();
-    }
+    // このOpenCV環境ではkp.delete()を呼び出さない
+    points.push({
+      x: kp.pt.x,
+      y: kp.pt.y
+    });
   }
 
   return points;
 }
+
 
 async function initialize(readyCV) {
   cvx = readyCV;
