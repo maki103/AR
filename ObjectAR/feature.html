@@ -251,7 +251,9 @@ function recognize() {
     scoreText.textContent =
       "良好な対応点数：" + bestCount;
 
-    statusText.textContent = "基準画像との照合完了";
+    statusText.textContent = bestCount >= 20
+    ? "照合完了"
+    : "照合できません";
 
     // 仮の判定値。実験結果を確認して調整します。
     message.textContent = bestCount >= 20
