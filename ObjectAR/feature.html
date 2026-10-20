@@ -36,9 +36,17 @@
 
   <video id="video" autoplay muted playsinline></video>
 
+  <!-- 基準画像10枚 -->
   <img class="reference" id="reference1" src="assets/reference1.png">
   <img class="reference" id="reference2" src="assets/reference2.png">
   <img class="reference" id="reference3" src="assets/reference3.png">
+  <img class="reference" id="reference4" src="assets/reference4.png">
+  <img class="reference" id="reference5" src="assets/reference5.png">
+  <img class="reference" id="reference6" src="assets/reference6.png">
+  <img class="reference" id="reference7" src="assets/reference7.png">
+  <img class="reference" id="reference8" src="assets/reference8.png">
+  <img class="reference" id="reference9" src="assets/reference9.png">
+  <img class="reference" id="reference10" src="assets/reference10.png">
 
 <script>
 const video = document.getElementById("video");
@@ -46,11 +54,11 @@ const message = document.getElementById("message");
 const scoreText = document.getElementById("score");
 const statusText = document.getElementById("status");
 
-const images = [
-  document.getElementById("reference1"),
-  document.getElementById("reference2"),
-  document.getElementById("reference3")
-];
+// 基準画像10枚を取得
+const images = Array.from(
+  { length: 10 },
+  (_, i) => document.getElementById("reference" + (i + 1))
+);
 
 let cvx;
 let orb;
@@ -92,7 +100,7 @@ async function initialize(readyCV) {
 }
 
 function prepareReferences() {
-  references = images.map((img) => {
+  references = images.map((img, index) => {
     const src = cvx.imread(img);
     const gray = new cvx.Mat();
     const keypoints = new cvx.KeyPointVector();
@@ -104,11 +112,19 @@ function prepareReferences() {
       orb.detectAndCompute(gray, mask, keypoints, descriptors);
 
       if (descriptors.empty() || descriptors.rows === 0) {
-        throw new Error("基準画像から特徴点を検出できません");
+        throw new Error(
+          "基準画像" + (index + 1) +
+          "から特徴点を検出できません"
+        );
       }
 
       const result = descriptors.clone();
-      console.log("基準画像の特徴点数：", result.rows);
+
+      console.log(
+        "基準画像" + (index + 1) +
+        "の特徴点数：", result.rows
+      );
+
       return result;
     } finally {
       src.delete();
@@ -119,12 +135,15 @@ function prepareReferences() {
     }
   });
 
-  statusText.textContent = "基準画像3枚の特徴量を準備しました";
+  statusText.textContent =
+    "基準画像10枚の特徴量を準備しました";
 }
 
 async function startCamera() {
   if (!navigator.mediaDevices?.getUserMedia) {
-    throw new Error("カメラ機能が利用できません。HTTPSで開いてください");
+    throw new Error(
+      "カメラ機能が利用できません。HTTPSで開いてください"
+    );
   }
 
   const stream = await navigator.mediaDevices.getUserMedia({
@@ -142,7 +161,11 @@ async function startCamera() {
 function loop(timestamp) {
   requestAnimationFrame(loop);
 
-  if (busy || video.readyState < 2 || timestamp - lastRun < 500) {
+  if (
+    busy ||
+    video.readyState < 2 ||
+    timestamp - lastRun < 500
+  ) {
     return;
   }
 
@@ -181,7 +204,8 @@ function recognize() {
     if (descriptors.empty() || descriptors.rows === 0) {
       scoreText.textContent = "良好な対応点数：0";
       message.textContent = "特徴点を検出できません";
-      statusText.textContent = "照明やカメラの向きを変えてください";
+      statusText.textContent =
+        "照明やカメラの向きを変えてください";
       return;
     }
 
@@ -210,6 +234,11 @@ function recognize() {
           }
         }
 
+        console.log(
+          "基準画像" + (index + 1) +
+          "の良好な対応点数：", goodCount
+        );
+
         if (goodCount > bestCount) {
           bestCount = goodCount;
           bestIndex = index;
@@ -219,15 +248,18 @@ function recognize() {
       }
     });
 
-    scoreText.textContent = "良好な対応点数：" + bestCount;
+    scoreText.textContent =
+      "良好な対応点数：" + bestCount;
+
     statusText.textContent = bestIndex < 0
       ? "基準画像：未一致"
-      : "基準画像との照合完了";
+      : "最も一致した基準画像：" + (bestIndex + 1);
 
-    // 仮の判定値。実測後に調整します。
+    // 仮の判定値。実験結果を確認して調整します。
     message.textContent = bestCount >= 15
       ? "特徴点が一致しました"
       : "十分な一致を確認できません";
+
   } finally {
     src.delete();
     gray.delete();
@@ -239,7 +271,8 @@ function recognize() {
 
 cv.then(initialize).catch(error => {
   console.error(error);
-  statusText.textContent = "OpenCVの初期化に失敗しました";
+  statusText.textContent =
+    "OpenCVの初期化に失敗しました";
 });
 </script>
 </body>
