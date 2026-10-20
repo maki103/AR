@@ -5,13 +5,17 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>展示物認識・ORB特徴点マッチング</title>
+
   <script src="./opencv-3.0.0-standalone.js"></script>
 
-  
   <style>
+    * {
+      box-sizing: border-box;
+    }
+
     body {
       margin: 0;
-      padding: 10px;
+      padding: 8px;
       background: #111;
       color: white;
       font-family: sans-serif;
@@ -21,22 +25,23 @@
     #video {
       display: block;
       width: 100%;
-      max-height: 55vh;
+      max-height: 45vh;
       object-fit: contain;
       background: #222;
     }
 
     #message, #score, #status {
-      padding: 6px;
+      padding: 6px 2px;
+      margin: 0;
     }
 
     #message {
-      font-size: 20px;
+      font-size: 19px;
       font-weight: bold;
     }
 
     #score {
-      font-size: 18px;
+      font-size: 17px;
     }
 
     #status {
@@ -47,17 +52,24 @@
       display: none;
     }
 
+    .caption {
+      font-size: 14px;
+      margin: 12px 0 6px;
+    }
+
     #matchCanvas {
       display: block;
       width: 100%;
+      max-width: 600px;
       height: auto;
-      margin-top: 8px;
+      margin: 0 auto;
       background: #222;
     }
 
-    .caption {
-      font-size: 14px;
-      margin-top: 12px;
+    .legend {
+      font-size: 12px;
+      color: #ddd;
+      margin: 6px 0 12px;
     }
   </style>
 </head>
@@ -70,9 +82,15 @@
   <video id="video" autoplay muted playsinline></video>
 
   <div class="caption">
-    ORB対応点の可視化（左：基準画像、右：カメラ画像）
+    ORB対応点の可視化
   </div>
+
   <canvas id="matchCanvas"></canvas>
+
+  <div class="legend">
+    左：基準画像　右：カメラ画像<br>
+    赤い丸：対応点　緑色の線：対応点同士のつながり
+  </div>
 
   <!-- 基準画像10枚 -->
   <img class="reference" id="reference1" src="assets/reference1.png">
@@ -106,6 +124,10 @@ let references = [];
 let busy = false;
 let lastRun = 0;
 
+// 表示する画像の大きさを固定
+const PANEL_W = 300;
+const PANEL_H = 225;
+
 function waitForImages() {
   return Promise.all(images.map((img, i) => {
     if (img.complete && img.naturalWidth > 0) {
@@ -113,7 +135,7 @@ function waitForImages() {
     }
 
     return new Promise((resolve, reject) => {
-      img.onload = resolve;
+      img.onload = () => resolve();
       img.onerror = () => reject(
         new Error("基準画像" + (i + 1) + "を読み込めません")
       );
@@ -121,15 +143,14 @@ function waitForImages() {
   }));
 }
 
-// ORB特徴点の座標をJavaScript配列に保存する
-  
+// 特徴点の座標を取得
+// このOpenCV環境ではkp.delete()を呼び出さない
 function getKeypointCoordinates(keypoints) {
   const points = [];
 
   for (let i = 0; i < keypoints.size(); i++) {
     const kp = keypoints.get(i);
 
-    // このOpenCV環境ではkp.delete()を呼び出さない
     points.push({
       x: kp.pt.x,
       y: kp.pt.y
@@ -139,7 +160,6 @@ function getKeypointCoordinates(keypoints) {
   return points;
 }
 
-
 async function initialize(readyCV) {
   cvx = readyCV;
 
@@ -148,8 +168,10 @@ async function initialize(readyCV) {
     matcher = new cvx.BFMatcher(cvx.NORM_HAMMING, false);
 
     await waitForImages();
+
     prepareReferences();
     await startCamera();
+
   } catch (error) {
     console.error(error);
     statusText.textContent = "初期化エラー：" + error.message;
@@ -157,6 +179,7 @@ async function initialize(readyCV) {
   }
 }
 
+// 基準画像10枚の特徴量を準備
 function prepareReferences() {
   references = images.map((img, index) => {
     const src = cvx.imread(img);
@@ -189,6 +212,7 @@ function prepareReferences() {
       );
 
       return result;
+
     } finally {
       src.delete();
       gray.delete();
@@ -198,18 +222,21 @@ function prepareReferences() {
     }
   });
 
-  statusText.textContent = "基準画像10枚の特徴量を準備しました";
+  statusText.textContent = "基準画像10枚の準備完了";
 }
 
+// カメラを起動
 async function startCamera() {
   if (!navigator.mediaDevices?.getUserMedia) {
     throw new Error(
-      "カメラ機能が利用できません。HTTPSで開いてください"
+      "カメラを利用できません。HTTPSで開いてください"
     );
   }
 
   const stream = await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: { ideal: "environment" } },
+    video: {
+      facingMode: { ideal: "environment" }
+    },
     audio: false
   });
 
@@ -217,9 +244,11 @@ async function startCamera() {
   await video.play();
 
   message.textContent = "展示物をカメラに映してください";
+
   requestAnimationFrame(loop);
 }
 
+// 約0.5秒ごとに認識
 function loop(timestamp) {
   requestAnimationFrame(loop);
 
@@ -244,13 +273,17 @@ function loop(timestamp) {
   }
 }
 
+// ORB照合
 function recognize() {
   const cameraCanvas = document.createElement("canvas");
+
   cameraCanvas.width = video.videoWidth;
   cameraCanvas.height = video.videoHeight;
 
   cameraCanvas.getContext("2d").drawImage(
-    video, 0, 0, cameraCanvas.width, cameraCanvas.height
+    video, 0, 0,
+    cameraCanvas.width,
+    cameraCanvas.height
   );
 
   const src = cvx.imread(cameraCanvas);
@@ -270,21 +303,22 @@ function recognize() {
     if (descriptors.empty() || descriptors.rows === 0) {
       scoreText.textContent = "良好な対応点数：0";
       message.textContent = "特徴点を検出できません";
-      statusText.textContent = "照明やカメラの向きを変えてください";
+      statusText.textContent = "カメラの向きを変えてください";
+      drawEmptyCanvas();
       return;
     }
 
-    // 現在のカメラ画像にある特徴点の座標を取得
     const cameraPoints = getKeypointCoordinates(keypoints);
 
     references.forEach((ref, index) => {
       const matches = new cvx.DMatchVectorVector();
 
       try {
-        // queryIdx：カメラ画像側
-        // trainIdx：基準画像側
         matcher.knnMatch(
-          descriptors, ref.descriptors, matches, 2
+          descriptors,
+          ref.descriptors,
+          matches,
+          2
         );
 
         let goodCount = 0;
@@ -295,21 +329,23 @@ function recognize() {
 
           try {
             if (pair.size() >= 2) {
-              
-const first = pair.get(0);
-const second = pair.get(1);
+              const first = pair.get(0);
+              const second = pair.get(1);
 
-if (first.distance < 0.75 * second.distance) {
-  goodCount++;
+              if (
+                first.distance <
+                0.75 * second.distance
+              ) {
+                goodCount++;
 
-  goodPairs.push({
-    cameraIndex: first.queryIdx,
-    referenceIndex: first.trainIdx
-  });
-}
-
+                goodPairs.push({
+                  cameraIndex: first.queryIdx,
+                  referenceIndex: first.trainIdx
+                });
+              }
             }
           } finally {
+            // pair.delete()は既存環境での動作に合わせて維持
             pair.delete();
           }
         }
@@ -324,22 +360,24 @@ if (first.distance < 0.75 * second.distance) {
           bestIndex = index;
           bestPairs = goodPairs;
         }
+
       } finally {
         matches.delete();
       }
     });
 
-    scoreText.textContent = "良好な対応点数：" + bestCount;
+    scoreText.textContent =
+      "良好な対応点数：" + bestCount;
 
-    statusText.textContent = bestCount >= 20
-      ? "照合完了"
-      : "照合できません";
+    if (bestCount >= 20) {
+      statusText.textContent = "照合完了";
+      message.textContent = "特徴点が一致しました";
+    } else {
+      statusText.textContent = "照合できません";
+      message.textContent =
+        "十分な一致を確認できません";
+    }
 
-    message.textContent = bestCount >= 20
-      ? "特徴点が一致しました"
-      : "十分な一致を確認できません";
-
-    // 最も対応点数が多かった基準画像を可視化
     if (bestIndex >= 0) {
       drawMatches(
         images[bestIndex],
@@ -361,7 +399,7 @@ if (first.distance < 0.75 * second.distance) {
   }
 }
 
-// 基準画像とカメラ画像を横に並べ、対応点を線で結ぶ
+// 画像を一定サイズにそろえ、対応点を描画
 function drawMatches(
   referenceImage,
   reference,
@@ -369,11 +407,12 @@ function drawMatches(
   cameraPoints,
   pairs
 ) {
-  const refW = reference.width;
-  const refH = reference.height;
-  const camW = cameraImage.width;
-  const camH = cameraImage.height;
+  const refW = PANEL_W;
+  const refH = PANEL_H;
+  const camW = PANEL_W;
+  const camH = PANEL_H;
 
+  // キャンバス自体の大きさを固定
   matchCanvas.width = refW + camW;
   matchCanvas.height = Math.max(refH, camH);
 
@@ -386,78 +425,89 @@ function drawMatches(
     0, 0, matchCanvas.width, matchCanvas.height
   );
 
-  matchCtx.drawImage(referenceImage, 0, 0, refW, refH);
-  matchCtx.drawImage(cameraImage, refW, 0, camW, camH);
+  // 左右の画像を同じ大きさで描画
+  matchCtx.drawImage(
+    referenceImage, 0, 0, refW, refH
+  );
 
-  // 対応点を線で結ぶ
+  matchCtx.drawImage(
+    cameraImage, refW, 0, camW, camH
+  );
+
+  // 元画像の座標から表示画像の座標への倍率
+  const refScaleX = refW / reference.width;
+  const refScaleY = refH / reference.height;
+  const camScaleX = camW / cameraImage.width;
+  const camScaleY = camH / cameraImage.height;
+
+  // 対応点同士を緑色の線で結ぶ
   matchCtx.lineWidth = 1;
 
   pairs.forEach(pair => {
-    const refPoint = reference.points[pair.referenceIndex];
-    const camPoint = cameraPoints[pair.cameraIndex];
+    const rp = reference.points[pair.referenceIndex];
+    const cp = cameraPoints[pair.cameraIndex];
 
-    if (!refPoint || !camPoint) return;
+    if (!rp || !cp) return;
 
     matchCtx.beginPath();
-    matchCtx.moveTo(refPoint.x, refPoint.y);
-    matchCtx.lineTo(refW + camPoint.x, camPoint.y);
-    matchCtx.strokeStyle = "rgba(0, 255, 100, 0.8)";
+
+    matchCtx.moveTo(
+      rp.x * refScaleX,
+      rp.y * refScaleY
+    );
+
+    matchCtx.lineTo(
+      refW + cp.x * camScaleX,
+      cp.y * camScaleY
+    );
+
+    matchCtx.strokeStyle = "rgba(0, 255, 100, 0.85)";
     matchCtx.stroke();
   });
 
-  // 基準画像側の対応点を丸で表示
+  // 左右の対応点に赤い丸を表示
   pairs.forEach(pair => {
-    const point = reference.points[pair.referenceIndex];
-    if (!point) return;
+    const rp = reference.points[pair.referenceIndex];
+    const cp = cameraPoints[pair.cameraIndex];
 
-    matchCtx.beginPath();
-    matchCtx.arc(point.x, point.y, 4, 0, Math.PI * 2);
-    matchCtx.fillStyle = "#ff4444";
-    matchCtx.fill();
+    if (rp) {
+      drawPoint(
+        rp.x * refScaleX,
+        rp.y * refScaleY
+      );
+    }
+
+    if (cp) {
+      drawPoint(
+        refW + cp.x * camScaleX,
+        cp.y * camScaleY
+      );
+    }
   });
-
-  // カメラ画像側の対応点を丸で表示
-  pairs.forEach(pair => {
-    const point = cameraPoints[pair.cameraIndex];
-    if (!point) return;
-
-    matchCtx.beginPath();
-    matchCtx.arc(
-      refW + point.x, point.y, 4, 0, Math.PI * 2
-    );
-    matchCtx.fillStyle = "#ff4444";
-    matchCtx.fill();
-  });
-
-  console.log(
-    "表示中の基準画像：" + (bestReferenceNumber()) +
-    "、描画した対応点数：" + pairs.length
-  );
 }
 
-function bestReferenceNumber() {
-  // 表示中の基準画像番号は認識処理側のbestIndexで管理
-  return bestIndexForDisplay + 1;
+function drawPoint(x, y) {
+  matchCtx.beginPath();
+  matchCtx.arc(x, y, 3, 0, Math.PI * 2);
+  matchCtx.fillStyle = "#ff3333";
+  matchCtx.fill();
 }
-
-let bestIndexForDisplay = 0;
 
 function drawEmptyCanvas() {
-  matchCanvas.width = 600;
-  matchCanvas.height = 160;
-
-  matchCtx.clearRect(
-    0, 0, matchCanvas.width, matchCanvas.height
-  );
+  matchCanvas.width = PANEL_W * 2;
+  matchCanvas.height = PANEL_H;
 
   matchCtx.fillStyle = "#222";
   matchCtx.fillRect(
-    0, 0, matchCanvas.width, matchCanvas.height
+    0, 0,
+    matchCanvas.width,
+    matchCanvas.height
   );
 
   matchCtx.fillStyle = "white";
   matchCtx.font = "18px sans-serif";
   matchCtx.textAlign = "center";
+
   matchCtx.fillText(
     "対応点を表示できません",
     matchCanvas.width / 2,
@@ -467,7 +517,8 @@ function drawEmptyCanvas() {
 
 cv.then(initialize).catch(error => {
   console.error(error);
-  statusText.textContent = "OpenCVの初期化に失敗しました";
+  statusText.textContent =
+    "OpenCVの初期化に失敗しました";
 });
 </script>
 </body>
