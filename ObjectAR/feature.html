@@ -294,23 +294,19 @@ function recognize() {
 
           try {
             if (pair.size() >= 2) {
-              const first = pair.get(0);
-              const second = pair.get(1);
+              
+const first = pair.get(0);
+const second = pair.get(1);
 
-              try {
-                // 良好な対応点を選ぶための比率条件
-                if (first.distance < 0.75 * second.distance) {
-                  goodCount++;
+if (first.distance < 0.75 * second.distance) {
+  goodCount++;
 
-                  goodPairs.push({
-                    cameraIndex: first.queryIdx,
-                    referenceIndex: first.trainIdx
-                  });
-                }
-              } finally {
-                first.delete();
-                second.delete();
-              }
+  goodPairs.push({
+    cameraIndex: first.queryIdx,
+    referenceIndex: first.trainIdx
+  });
+}
+
             }
           } finally {
             pair.delete();
