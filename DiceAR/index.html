@@ -91,7 +91,7 @@
     赤い丸：対応点　緑色の線：対応点同士のつながり
   </div>
 
-  <!-- サイコロの基準画像10枚 -->
+  <!-- サイコロの基準画像12枚 -->
   <img class="reference" id="reference1" src="assets/dice_reference1.png">
   <img class="reference" id="reference2" src="assets/dice_reference2.png">
   <img class="reference" id="reference3" src="assets/dice_reference3.png">
@@ -114,7 +114,7 @@ const matchCanvas = document.getElementById("matchCanvas");
 const matchCtx = matchCanvas.getContext("2d");
 
 const images = Array.from(
-  { length: 10 },
+  { length: 12 },
   (_, i) => document.getElementById("reference" + (i + 1))
 );
 
@@ -182,7 +182,7 @@ async function initialize(readyCV) {
   }
 }
 
-// サイコロの基準画像10枚の特徴量を準備
+// サイコロの基準画像12枚の特徴量を準備
 function prepareReferences() {
   references = images.map((img, index) => {
     const src = cvx.imread(img);
@@ -225,7 +225,7 @@ function prepareReferences() {
     }
   });
 
-  statusText.textContent = "サイコロの基準画像10枚の準備完了";
+  statusText.textContent = "サイコロの基準画像12枚の準備完了";
 }
 
 // カメラを起動
