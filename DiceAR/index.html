@@ -91,7 +91,7 @@
     赤い丸：対応点　緑色の線：対応点同士のつながり
   </div>
 
-  <!-- サイコロの基準画像12枚 -->
+  <!-- サイコロの基準画像15枚 -->
   <img class="reference" id="reference1" src="assets/dice_reference1.png">
   <img class="reference" id="reference2" src="assets/dice_reference2.png">
   <img class="reference" id="reference3" src="assets/dice_reference3.png">
@@ -104,6 +104,9 @@
   <img class="reference" id="reference10" src="assets/dice_reference10.png">
   <img class="reference" id="reference11" src="assets/dice_reference11.png">
   <img class="reference" id="reference12" src="assets/dice_reference12.png">
+  <img class="reference" id="reference13" src="assets/dice_reference13.png">
+  <img class="reference" id="reference14" src="assets/dice_reference14.png">
+  <img class="reference" id="reference15" src="assets/dice_reference15.png">
 
 <script>
 const video = document.getElementById("video");
@@ -114,7 +117,7 @@ const matchCanvas = document.getElementById("matchCanvas");
 const matchCtx = matchCanvas.getContext("2d");
 
 const images = Array.from(
-  { length: 12 },
+  { length: 15 },
   (_, i) => document.getElementById("reference" + (i + 1))
 );
 
@@ -182,7 +185,7 @@ async function initialize(readyCV) {
   }
 }
 
-// サイコロの基準画像12枚の特徴量を準備
+// サイコロの基準画像15枚の特徴量を準備
 function prepareReferences() {
   references = images.map((img, index) => {
     const src = cvx.imread(img);
@@ -225,7 +228,7 @@ function prepareReferences() {
     }
   });
 
-  statusText.textContent = "サイコロの基準画像12枚の準備完了";
+  statusText.textContent = "サイコロの基準画像15枚の準備完了";
 }
 
 // カメラを起動
