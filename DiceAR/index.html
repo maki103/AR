@@ -1,12 +1,10 @@
-
-
 <!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>展示物認識・ORB特徴点マッチング</title>
-  
+  <title>サイコロ認識・ORB特徴点マッチング</title>
+
   <script src="./opencv-3.0.0-standalone.js"></script>
 
   <style>
@@ -89,21 +87,21 @@
   <canvas id="matchCanvas"></canvas>
 
   <div class="legend">
-    左：基準画像　右：カメラ画像<br>
+    左：サイコロの基準画像　右：カメラ画像<br>
     赤い丸：対応点　緑色の線：対応点同士のつながり
   </div>
 
-  <!-- 基準画像10枚 -->
-  <img class="reference" id="reference1" src="assets/reference1.png">
-  <img class="reference" id="reference2" src="assets/reference2.png">
-  <img class="reference" id="reference3" src="assets/reference3.png">
-  <img class="reference" id="reference4" src="assets/reference4.png">
-  <img class="reference" id="reference5" src="assets/reference5.png">
-  <img class="reference" id="reference6" src="assets/reference6.png">
-  <img class="reference" id="reference7" src="assets/reference7.png">
-  <img class="reference" id="reference8" src="assets/reference8.png">
-  <img class="reference" id="reference9" src="assets/reference9.png">
-  <img class="reference" id="reference10" src="assets/reference10.png">
+  <!-- サイコロの基準画像10枚 -->
+  <img class="reference" id="reference1" src="assets/dice_reference1.png">
+  <img class="reference" id="reference2" src="assets/dice_reference2.png">
+  <img class="reference" id="reference3" src="assets/dice_reference3.png">
+  <img class="reference" id="reference4" src="assets/dice_reference4.png">
+  <img class="reference" id="reference5" src="assets/dice_reference5.png">
+  <img class="reference" id="reference6" src="assets/dice_reference6.png">
+  <img class="reference" id="reference7" src="assets/dice_reference7.png">
+  <img class="reference" id="reference8" src="assets/dice_reference8.png">
+  <img class="reference" id="reference9" src="assets/dice_reference9.png">
+  <img class="reference" id="reference10" src="assets/dice_reference10.png">
 
 <script>
 const video = document.getElementById("video");
@@ -138,14 +136,16 @@ function waitForImages() {
     return new Promise((resolve, reject) => {
       img.onload = () => resolve();
       img.onerror = () => reject(
-        new Error("基準画像" + (i + 1) + "を読み込めません")
+        new Error(
+          "サイコロの基準画像" + (i + 1) +
+          "を読み込めません。画像の保存場所を確認してください"
+        )
       );
     });
   }));
 }
 
 // 特徴点の座標を取得
-// このOpenCV環境ではkp.delete()を呼び出さない
 function getKeypointCoordinates(keypoints) {
   const points = [];
 
@@ -180,7 +180,7 @@ async function initialize(readyCV) {
   }
 }
 
-// 基準画像10枚の特徴量を準備
+// サイコロの基準画像10枚の特徴量を準備
 function prepareReferences() {
   references = images.map((img, index) => {
     const src = cvx.imread(img);
@@ -195,7 +195,7 @@ function prepareReferences() {
 
       if (descriptors.empty() || descriptors.rows === 0) {
         throw new Error(
-          "基準画像" + (index + 1) +
+          "サイコロの基準画像" + (index + 1) +
           "から特徴点を検出できません"
         );
       }
@@ -208,7 +208,7 @@ function prepareReferences() {
       };
 
       console.log(
-        "基準画像" + (index + 1) +
+        "サイコロの基準画像" + (index + 1) +
         "の特徴点数：" + result.points.length
       );
 
@@ -223,7 +223,7 @@ function prepareReferences() {
     }
   });
 
-  statusText.textContent = "基準画像10枚の準備完了";
+  statusText.textContent = "サイコロの基準画像10枚の準備完了";
 }
 
 // カメラを起動
@@ -244,7 +244,7 @@ async function startCamera() {
   video.srcObject = stream;
   await video.play();
 
-  message.textContent = "展示物をカメラに映してください";
+  message.textContent = "サイコロをカメラに映してください";
 
   requestAnimationFrame(loop);
 }
@@ -346,13 +346,12 @@ function recognize() {
               }
             }
           } finally {
-            // pair.delete()は既存環境での動作に合わせて維持
             pair.delete();
           }
         }
 
         console.log(
-          "基準画像" + (index + 1) +
+          "サイコロの基準画像" + (index + 1) +
           "の良好な対応点数：" + goodCount
         );
 
@@ -370,13 +369,13 @@ function recognize() {
     scoreText.textContent =
       "良好な対応点数：" + bestCount;
 
+    // 良好な対応点数が20以上なら照合完了
     if (bestCount >= 20) {
       statusText.textContent = "照合完了";
-      message.textContent = "特徴点が一致しました";
+      message.textContent = "サイコロの特徴点が一致しました";
     } else {
       statusText.textContent = "照合できません";
-      message.textContent =
-        "十分な一致を確認できません";
+      message.textContent = "十分な一致を確認できません";
     }
 
     if (bestIndex >= 0) {
@@ -413,7 +412,6 @@ function drawMatches(
   const camW = PANEL_W;
   const camH = PANEL_H;
 
-  // キャンバス自体の大きさを固定
   matchCanvas.width = refW + camW;
   matchCanvas.height = Math.max(refH, camH);
 
@@ -426,11 +424,12 @@ function drawMatches(
     0, 0, matchCanvas.width, matchCanvas.height
   );
 
-  // 左右の画像を同じ大きさで描画
+  // 左：基準画像
   matchCtx.drawImage(
     referenceImage, 0, 0, refW, refH
   );
 
+  // 右：カメラ画像
   matchCtx.drawImage(
     cameraImage, refW, 0, camW, camH
   );
@@ -518,8 +517,7 @@ function drawEmptyCanvas() {
 
 cv.then(initialize).catch(error => {
   console.error(error);
-  statusText.textContent =
-    "OpenCVの初期化に失敗しました";
+  statusText.textContent = "OpenCVの初期化に失敗しました";
 });
 </script>
 </body>
