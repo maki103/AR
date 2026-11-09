@@ -1,1 +1,356 @@
 
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>絵画認識・ORB特徴点マッチング</title>
+
+  <script src="./opencv-3.0.0-standalone.js"></script>
+
+  <style>
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      margin: 10px;
+      background: #f5f5f5;
+    }
+
+    #video {
+      width: 100%;
+      max-width: 640px;
+      background: black;
+    }
+
+    #result {
+      width: 100%;
+      max-width: 640px;
+      border: 1px solid #ccc;
+      background: white;
+    }
+
+    .reference {
+      display: none;
+    }
+
+    #status {
+      font-size: 18px;
+      font-weight: bold;
+    }
+
+    #count {
+      font-size: 16px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h2>絵画認識・ORB特徴点マッチング</h2>
+  <p>カメラに「星月夜」の画像を映してください。</p>
+
+  <video id="video" autoplay playsinline></video>
+
+  <p id="status">OpenCV.jsの読み込みを待っています...</p>
+  <p id="count">良好な対応点数：0</p>
+  <p id="best">最も一致した基準画像：なし</p>
+
+  <canvas id="result"></canvas>
+
+  <!-- 基準画像10枚 -->
+  <div>
+    <img class="reference" src="assets/e1.jpg">
+    <img class="reference" src="assets/e2.jpg">
+    <img class="reference" src="assets/e3.jpg">
+    <img class="reference" src="assets/e4.jpg">
+    <img class="reference" src="assets/e5.jpg">
+    <img class="reference" src="assets/e6.jpg">
+    <img class="reference" src="assets/e7.jpg">
+    <img class="reference" src="assets/e8.jpg">
+    <img class="reference" src="assets/e9.jpg">
+    <img class="reference" src="assets/e10.jpg">
+  </div>
+
+  <script>
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("result");
+    const ctx = canvas.getContext("2d");
+
+    const statusText = document.getElementById("status");
+    const countText = document.getElementById("count");
+    const bestText = document.getElementById("best");
+
+    const images = Array.from(
+      document.querySelectorAll(".reference")
+    );
+
+    // 認識判定の仮の基準値
+    const MATCH_THRESHOLD = 20;
+
+    let cvx;
+    let orb;
+    let matcher;
+    let references = [];
+    let busy = false;
+
+    // 画像10枚の読み込みを待つ
+    function waitForImages() {
+      return Promise.all(
+        images.map(img => {
+          return new Promise((resolve, reject) => {
+            if (img.complete && img.naturalWidth > 0) {
+              resolve();
+            } else {
+              img.onload = resolve;
+              img.onerror = () => reject(
+                new Error("基準画像を読み込めません: " + img.src)
+              );
+            }
+          });
+        })
+      );
+    }
+
+    // OpenCV初期化
+    async function initialize() {
+      cvx = cv;
+
+      try {
+        statusText.textContent = "基準画像10枚を読み込んでいます...";
+
+        await waitForImages();
+
+        orb = new cvx.ORB(1000);
+        matcher = new cvx.BFMatcher(cvx.NORM_HAMMING, false);
+
+        // 10枚それぞれの特徴量を取得
+        images.forEach((img, index) => {
+          const mat = cvx.imread(img);
+          const gray = new cvx.Mat();
+
+          cvx.cvtColor(
+            mat,
+            gray,
+            cvx.COLOR_RGBA2GRAY
+          );
+
+          const keypoints = new cvx.KeyPointVector();
+          const descriptors = new cvx.Mat();
+
+          orb.detectAndCompute(
+            gray,
+            new cvx.Mat(),
+            keypoints,
+            descriptors
+          );
+
+          references.push({
+            name: "基準画像" + (index + 1),
+            keypoints: keypoints,
+            descriptors: descriptors
+          });
+
+          mat.delete();
+          gray.delete();
+        });
+
+        statusText.textContent =
+          "基準画像の準備完了。カメラを起動します。";
+
+        startCamera();
+
+      } catch (error) {
+        console.error(error);
+        statusText.textContent = error.message;
+      }
+    }
+
+    // カメラ起動
+    async function startCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: "environment"
+          },
+          audio: false
+        });
+
+        video.srcObject = stream;
+
+        video.onloadedmetadata = () => {
+          video.play();
+
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+
+          statusText.textContent = "認識中...";
+          recognize();
+        };
+
+      } catch (error) {
+        console.error(error);
+        statusText.textContent =
+          "カメラを起動できませんでした。";
+      }
+    }
+
+    // カメラ画像と基準画像10枚を照合
+    function recognize() {
+      if (busy || video.readyState < 2) {
+        setTimeout(recognize, 500);
+        return;
+      }
+
+      busy = true;
+
+      let frame, gray, keypoints, descriptors;
+
+      try {
+        const tempCanvas = document.createElement("canvas");
+        tempCanvas.width = video.videoWidth;
+        tempCanvas.height = video.videoHeight;
+
+        const tempCtx = tempCanvas.getContext("2d");
+        tempCtx.drawImage(video, 0, 0);
+
+        frame = cvx.imread(tempCanvas);
+        gray = new cvx.Mat();
+
+        cvx.cvtColor(
+          frame,
+          gray,
+          cvx.COLOR_RGBA2GRAY
+        );
+
+        keypoints = new cvx.KeyPointVector();
+        descriptors = new cvx.Mat();
+
+        orb.detectAndCompute(
+          gray,
+          new cvx.Mat(),
+          keypoints,
+          descriptors
+        );
+
+        let bestCount = 0;
+        let bestIndex = -1;
+        let bestPoints = [];
+
+        // 10枚の基準画像と順番に照合
+        if (!descriptors.empty()) {
+          references.forEach((reference, index) => {
+            if (reference.descriptors.empty()) return;
+
+            const matches = new cvx.DMatchVectorVector();
+            const points = [];
+            let goodCount = 0;
+
+            matcher.knnMatch(
+              descriptors,
+              reference.descriptors,
+              matches,
+              2
+            );
+
+            // Loweの比率テスト
+            for (let i = 0; i < matches.size(); i++) {
+              const pair = matches.get(i);
+
+              if (pair.size() >= 2) {
+                const first = pair.get(0);
+                const second = pair.get(1);
+
+                if (first.distance < 0.75 * second.distance) {
+                  goodCount++;
+
+                  const point = keypoints.get(first.queryIdx).pt;
+
+                  points.push({
+                    x: point.x,
+                    y: point.y
+                  });
+                }
+
+                first.delete();
+                second.delete();
+              }
+
+              pair.delete();
+            }
+
+            matches.delete();
+
+            // 最も対応点数が多い画像を記録
+            if (goodCount > bestCount) {
+              bestCount = goodCount;
+              bestIndex = index;
+              bestPoints = points;
+            }
+          });
+        }
+
+        // カメラ画像を表示
+        ctx.drawImage(
+          video,
+          0,
+          0,
+          canvas.width,
+          canvas.height
+        );
+
+        // 対応点を緑色の円で表示
+        ctx.fillStyle = "lime";
+
+        bestPoints.forEach(point => {
+          ctx.beginPath();
+          ctx.arc(point.x, point.y, 5, 0, Math.PI * 2);
+          ctx.fill();
+        });
+
+        // 対応点数を表示
+        countText.textContent =
+          "良好な対応点数：" + bestCount;
+
+        // 最も一致した基準画像を表示
+        if (bestIndex >= 0) {
+          bestText.textContent =
+            "最も一致した基準画像：" + (bestIndex + 1);
+        } else {
+          bestText.textContent =
+            "最も一致した基準画像：なし";
+        }
+
+        // 認識判定
+        if (bestCount >= MATCH_THRESHOLD) {
+          statusText.textContent = "照合完了";
+          statusText.style.color = "green";
+        } else {
+          statusText.textContent = "認識中...";
+          statusText.style.color = "black";
+        }
+
+      } catch (error) {
+        console.error(error);
+        statusText.textContent =
+          "認識処理でエラーが発生しました。";
+
+      } finally {
+        if (frame) frame.delete();
+        if (gray) gray.delete();
+        if (keypoints) keypoints.delete();
+        if (descriptors) descriptors.delete();
+
+        busy = false;
+
+        // 約0.5秒ごとに認識
+        setTimeout(recognize, 500);
+      }
+    }
+
+    // OpenCV.jsの初期化
+    cv.then(initialize);
+
+  </script>
+
+</body>
+</html>
