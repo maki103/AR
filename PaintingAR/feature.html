@@ -120,7 +120,7 @@
 
         await waitForImages();
 
-        orb = new cvx.ORB(1000);
+        orb = cvx.ORB_create(1000);
         matcher = new cvx.BFMatcher(cvx.NORM_HAMMING, false);
 
         // 10枚それぞれの特徴量を取得
