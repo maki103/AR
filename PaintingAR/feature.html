@@ -1,356 +1,796 @@
-
 <!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
   <title>絵画認識・ORB特徴点マッチング</title>
 
   <script src="./opencv-3.0.0-standalone.js"></script>
-  
+
   <style>
+    * {
+      box-sizing: border-box;
+    }
+
     body {
+      margin: 0;
+      padding: 8px;
+      background: #111;
+      color: white;
       font-family: sans-serif;
       text-align: center;
-      margin: 10px;
-      background: #f5f5f5;
     }
 
     #video {
+      display: block;
       width: 100%;
-      max-width: 640px;
-      background: black;
+      max-height: 45vh;
+      object-fit: contain;
+      background: #222;
     }
 
-    #result {
-      width: 100%;
-      max-width: 640px;
-      border: 1px solid #ccc;
-      background: white;
+    #message, #score, #status {
+      padding: 6px 2px;
+      margin: 0;
+    }
+
+    #message {
+      font-size: 19px;
+      font-weight: bold;
+    }
+
+    #score {
+      font-size: 17px;
+    }
+
+    #status {
+      font-size: 14px;
     }
 
     .reference {
       display: none;
     }
 
-    #status {
-      font-size: 18px;
-      font-weight: bold;
+    .caption {
+      font-size: 14px;
+      margin: 12px 0 6px;
     }
 
-    #count {
-      font-size: 16px;
+    #matchCanvas {
+      display: block;
+      width: 100%;
+      max-width: 600px;
+      height: auto;
+      margin: 0 auto;
+      background: #222;
+    }
+
+    .legend {
+      font-size: 12px;
+      color: #ddd;
+      margin: 6px 0 12px;
     }
   </style>
 </head>
 
 <body>
 
-  <h2>絵画認識・ORB特徴点マッチング</h2>
-  <p>カメラに「星月夜」の画像を映してください。</p>
+  <div id="message">準備中...</div>
 
-  <video id="video" autoplay playsinline></video>
+  <div id="score">良好な対応点数：---</div>
 
-  <p id="status">OpenCV.jsの読み込みを待っています...</p>
-  <p id="count">良好な対応点数：0</p>
-  <p id="best">最も一致した基準画像：なし</p>
+  <div id="status">OpenCVを初期化しています</div>
 
-  <canvas id="result"></canvas>
+  <video id="video" autoplay muted playsinline></video>
 
-  <!-- 基準画像10枚 -->
-  <div>
-    <img class="reference" src="assets/e1.png">
-    <img class="reference" src="assets/e2.png">
-    <img class="reference" src="assets/e3.png">
-    <img class="reference" src="assets/e4.png">
-    <img class="reference" src="assets/e5.png">
-    <img class="reference" src="assets/e6.png">
-    <img class="reference" src="assets/e7.png">
-    <img class="reference" src="assets/e8.png">
-    <img class="reference" src="assets/e9.png">
-    <img class="reference" src="assets/e10.png">
+  <div class="caption">
+    ORB対応点の可視化
   </div>
 
-  <script>
-    const video = document.getElementById("video");
-    const canvas = document.getElementById("result");
-    const ctx = canvas.getContext("2d");
+  <canvas id="matchCanvas"></canvas>
 
-    const statusText = document.getElementById("status");
-    const countText = document.getElementById("count");
-    const bestText = document.getElementById("best");
+  <div class="legend">
+    左：絵画の基準画像　右：カメラ画像<br>
+    赤い丸：対応点　緑色の線：対応点同士のつながり
+  </div>
 
-    const images = Array.from(
-      document.querySelectorAll(".reference")
+  <!-- 絵画の基準画像10枚 -->
+  <img class="reference" id="reference1" src="assets/e1.png">
+  <img class="reference" id="reference2" src="assets/e2.png">
+  <img class="reference" id="reference3" src="assets/e3.png">
+  <img class="reference" id="reference4" src="assets/e4.png">
+  <img class="reference" id="reference5" src="assets/e5.png">
+  <img class="reference" id="reference6" src="assets/e6.png">
+  <img class="reference" id="reference7" src="assets/e7.png">
+  <img class="reference" id="reference8" src="assets/e8.png">
+  <img class="reference" id="reference9" src="assets/e9.png">
+  <img class="reference" id="reference10" src="assets/e10.png">
+
+<script>
+
+const video = document.getElementById("video");
+const message = document.getElementById("message");
+const scoreText = document.getElementById("score");
+const statusText = document.getElementById("status");
+
+const matchCanvas = document.getElementById("matchCanvas");
+const matchCtx = matchCanvas.getContext("2d");
+
+// 基準画像10枚
+const images = Array.from(
+  { length: 10 },
+  (_, i) => document.getElementById("reference" + (i + 1))
+);
+
+let cvx;
+let orb;
+let matcher;
+let references = [];
+
+let busy = false;
+let lastRun = 0;
+
+// 表示する画像の大きさ
+const PANEL_W = 300;
+const PANEL_H = 225;
+
+// 認識判定の仮の基準値
+const MATCH_THRESHOLD = 20;
+
+
+// 基準画像の読み込みを待つ
+function waitForImages() {
+
+  return Promise.all(
+    images.map((img, i) => {
+
+      if (img.complete && img.naturalWidth > 0) {
+        return Promise.resolve();
+      }
+
+      return new Promise((resolve, reject) => {
+
+        img.onload = () => resolve();
+
+        img.onerror = () => reject(
+          new Error(
+            "基準画像" + (i + 1) +
+            "を読み込めません。画像の保存場所を確認してください"
+          )
+        );
+
+      });
+
+    })
+  );
+
+}
+
+
+// 特徴点の座標を取得
+function getKeypointCoordinates(keypoints) {
+
+  const points = [];
+
+  for (let i = 0; i < keypoints.size(); i++) {
+
+    const kp = keypoints.get(i);
+
+    points.push({
+      x: kp.pt.x,
+      y: kp.pt.y
+    });
+
+  }
+
+  return points;
+
+}
+
+
+// OpenCV初期化
+async function initialize(readyCV) {
+
+  cvx = readyCV;
+
+  try {
+
+    // DiceARと同じORB生成方法
+    orb = new cvx.ORB(1000);
+
+    matcher = new cvx.BFMatcher(
+      cvx.NORM_HAMMING,
+      false
     );
 
-    // 認識判定の仮の基準値
-    const MATCH_THRESHOLD = 20;
+    statusText.textContent =
+      "基準画像10枚を読み込んでいます...";
 
-    let cvx;
-    let orb;
-    let matcher;
-    let references = [];
-    let busy = false;
+    await waitForImages();
 
-    // 画像10枚の読み込みを待つ
-    function waitForImages() {
-      return Promise.all(
-        images.map(img => {
-          return new Promise((resolve, reject) => {
-            if (img.complete && img.naturalWidth > 0) {
-              resolve();
-            } else {
-              img.onload = resolve;
-              img.onerror = () => reject(
-                new Error("基準画像を読み込めません: " + img.src)
-              );
-            }
-          });
-        })
+    prepareReferences();
+
+    await startCamera();
+
+  } catch (error) {
+
+    console.error(error);
+
+    statusText.textContent =
+      "初期化エラー：" + error.message;
+
+    message.textContent = "起動できませんでした";
+
+  }
+
+}
+
+
+// 基準画像10枚の特徴量を準備
+function prepareReferences() {
+
+  references = images.map((img, index) => {
+
+    const src = cvx.imread(img);
+
+    const gray = new cvx.Mat();
+
+    const keypoints = new cvx.KeyPointVector();
+
+    const descriptors = new cvx.Mat();
+
+    const mask = new cvx.Mat();
+
+    try {
+
+      cvx.cvtColor(
+        src,
+        gray,
+        cvx.COLOR_RGBA2GRAY
       );
-    }
 
-    // OpenCV初期化
-    async function initialize() {
-      cvx = cv;
+      orb.detectAndCompute(
+        gray,
+        mask,
+        keypoints,
+        descriptors
+      );
 
-      try {
-        statusText.textContent = "基準画像10枚を読み込んでいます...";
+      if (
+        descriptors.empty() ||
+        descriptors.rows === 0
+      ) {
 
-        await waitForImages();
-
-        orb = cvx.ORB_create(1000);
-        matcher = new cvx.BFMatcher(cvx.NORM_HAMMING, false);
-
-        // 10枚それぞれの特徴量を取得
-        images.forEach((img, index) => {
-          const mat = cvx.imread(img);
-          const gray = new cvx.Mat();
-
-          cvx.cvtColor(
-            mat,
-            gray,
-            cvx.COLOR_RGBA2GRAY
-          );
-
-          const keypoints = new cvx.KeyPointVector();
-          const descriptors = new cvx.Mat();
-
-          orb.detectAndCompute(
-            gray,
-            new cvx.Mat(),
-            keypoints,
-            descriptors
-          );
-
-          references.push({
-            name: "基準画像" + (index + 1),
-            keypoints: keypoints,
-            descriptors: descriptors
-          });
-
-          mat.delete();
-          gray.delete();
-        });
-
-        statusText.textContent =
-          "基準画像の準備完了。カメラを起動します。";
-
-        startCamera();
-
-      } catch (error) {
-        console.error(error);
-        statusText.textContent = error.message;
-      }
-    }
-
-    // カメラ起動
-    async function startCamera() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: "environment"
-          },
-          audio: false
-        });
-
-        video.srcObject = stream;
-
-        video.onloadedmetadata = () => {
-          video.play();
-
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
-
-          statusText.textContent = "認識中...";
-          recognize();
-        };
-
-      } catch (error) {
-        console.error(error);
-        statusText.textContent =
-          "カメラを起動できませんでした。";
-      }
-    }
-
-    // カメラ画像と基準画像10枚を照合
-    function recognize() {
-      if (busy || video.readyState < 2) {
-        setTimeout(recognize, 500);
-        return;
-      }
-
-      busy = true;
-
-      let frame, gray, keypoints, descriptors;
-
-      try {
-        const tempCanvas = document.createElement("canvas");
-        tempCanvas.width = video.videoWidth;
-        tempCanvas.height = video.videoHeight;
-
-        const tempCtx = tempCanvas.getContext("2d");
-        tempCtx.drawImage(video, 0, 0);
-
-        frame = cvx.imread(tempCanvas);
-        gray = new cvx.Mat();
-
-        cvx.cvtColor(
-          frame,
-          gray,
-          cvx.COLOR_RGBA2GRAY
+        throw new Error(
+          "基準画像" + (index + 1) +
+          "から特徴点を検出できません"
         );
 
-        keypoints = new cvx.KeyPointVector();
-        descriptors = new cvx.Mat();
+      }
 
-        orb.detectAndCompute(
-          gray,
-          new cvx.Mat(),
-          keypoints,
-          descriptors
+      const result = {
+
+        descriptors: descriptors.clone(),
+
+        points: getKeypointCoordinates(keypoints),
+
+        width: img.naturalWidth,
+
+        height: img.naturalHeight
+
+      };
+
+      console.log(
+        "基準画像" + (index + 1) +
+        "の特徴点数：" + result.points.length
+      );
+
+      return result;
+
+    } finally {
+
+      src.delete();
+      gray.delete();
+      keypoints.delete();
+      descriptors.delete();
+      mask.delete();
+
+    }
+
+  });
+
+  statusText.textContent =
+    "基準画像10枚の準備完了";
+
+}
+
+
+// カメラを起動
+async function startCamera() {
+
+  if (!navigator.mediaDevices?.getUserMedia) {
+
+    throw new Error(
+      "カメラを利用できません。HTTPSで開いてください"
+    );
+
+  }
+
+  const stream = await navigator.mediaDevices.getUserMedia({
+
+    video: {
+      facingMode: { ideal: "environment" }
+    },
+
+    audio: false
+
+  });
+
+  video.srcObject = stream;
+
+  await video.play();
+
+  message.textContent =
+    "星月夜をカメラに映してください";
+
+  requestAnimationFrame(loop);
+
+}
+
+
+// 約0.5秒ごとに認識
+function loop(timestamp) {
+
+  requestAnimationFrame(loop);
+
+  if (
+    busy ||
+    video.readyState < 2 ||
+    timestamp - lastRun < 500
+  ) {
+
+    return;
+
+  }
+
+  lastRun = timestamp;
+
+  busy = true;
+
+  try {
+
+    recognize();
+
+  } catch (error) {
+
+    console.error(error);
+
+    statusText.textContent =
+      "認識エラー：" + error.message;
+
+  } finally {
+
+    busy = false;
+
+  }
+
+}
+
+
+// ORB照合
+function recognize() {
+
+  const cameraCanvas = document.createElement("canvas");
+
+  cameraCanvas.width = video.videoWidth;
+  cameraCanvas.height = video.videoHeight;
+
+  cameraCanvas.getContext("2d").drawImage(
+    video,
+    0,
+    0,
+    cameraCanvas.width,
+    cameraCanvas.height
+  );
+
+  const src = cvx.imread(cameraCanvas);
+
+  const gray = new cvx.Mat();
+
+  const keypoints = new cvx.KeyPointVector();
+
+  const descriptors = new cvx.Mat();
+
+  const mask = new cvx.Mat();
+
+  let bestCount = 0;
+  let bestIndex = -1;
+  let bestPairs = [];
+
+  try {
+
+    cvx.cvtColor(
+      src,
+      gray,
+      cvx.COLOR_RGBA2GRAY
+    );
+
+    orb.detectAndCompute(
+      gray,
+      mask,
+      keypoints,
+      descriptors
+    );
+
+    if (
+      descriptors.empty() ||
+      descriptors.rows === 0
+    ) {
+
+      scoreText.textContent =
+        "良好な対応点数：0";
+
+      message.textContent =
+        "特徴点を検出できません";
+
+      statusText.textContent =
+        "カメラの向きを変えてください";
+
+      drawEmptyCanvas();
+
+      return;
+
+    }
+
+    const cameraPoints =
+      getKeypointCoordinates(keypoints);
+
+
+    // 基準画像10枚と順番に照合
+    references.forEach((ref, index) => {
+
+      const matches = new cvx.DMatchVectorVector();
+
+      try {
+
+        matcher.knnMatch(
+          descriptors,
+          ref.descriptors,
+          matches,
+          2
         );
 
-        let bestCount = 0;
-        let bestIndex = -1;
-        let bestPoints = [];
+        let goodCount = 0;
 
-        // 10枚の基準画像と順番に照合
-        if (!descriptors.empty()) {
-          references.forEach((reference, index) => {
-            if (reference.descriptors.empty()) return;
+        const goodPairs = [];
 
-            const matches = new cvx.DMatchVectorVector();
-            const points = [];
-            let goodCount = 0;
 
-            matcher.knnMatch(
-              descriptors,
-              reference.descriptors,
-              matches,
-              2
-            );
+        // Loweの比率テスト
+        for (
+          let i = 0;
+          i < matches.size();
+          i++
+        ) {
 
-            // Loweの比率テスト
-            for (let i = 0; i < matches.size(); i++) {
-              const pair = matches.get(i);
+          const pair = matches.get(i);
 
-              if (pair.size() >= 2) {
-                const first = pair.get(0);
-                const second = pair.get(1);
+          try {
 
-                if (first.distance < 0.75 * second.distance) {
-                  goodCount++;
+            if (pair.size() >= 2) {
 
-                  const point = keypoints.get(first.queryIdx).pt;
+              const first = pair.get(0);
 
-                  points.push({
-                    x: point.x,
-                    y: point.y
-                  });
-                }
+              const second = pair.get(1);
 
-                first.delete();
-                second.delete();
+              if (
+                first.distance <
+                0.75 * second.distance
+              ) {
+
+                goodCount++;
+
+                goodPairs.push({
+
+                  cameraIndex: first.queryIdx,
+
+                  referenceIndex: first.trainIdx
+
+                });
+
               }
 
-              pair.delete();
             }
 
-            matches.delete();
+          } finally {
 
-            // 最も対応点数が多い画像を記録
-            if (goodCount > bestCount) {
-              bestCount = goodCount;
-              bestIndex = index;
-              bestPoints = points;
-            }
-          });
+            pair.delete();
+
+          }
+
         }
 
-        // カメラ画像を表示
-        ctx.drawImage(
-          video,
-          0,
-          0,
-          canvas.width,
-          canvas.height
+
+        console.log(
+          "基準画像" + (index + 1) +
+          "の良好な対応点数：" + goodCount
         );
 
-        // 対応点を緑色の円で表示
-        ctx.fillStyle = "lime";
 
-        bestPoints.forEach(point => {
-          ctx.beginPath();
-          ctx.arc(point.x, point.y, 5, 0, Math.PI * 2);
-          ctx.fill();
-        });
+        // 最も対応点数が多い画像を記録
+        if (goodCount > bestCount) {
 
-        // 対応点数を表示
-        countText.textContent =
-          "良好な対応点数：" + bestCount;
+          bestCount = goodCount;
 
-        // 最も一致した基準画像を表示
-        if (bestIndex >= 0) {
-          bestText.textContent =
-            "最も一致した基準画像：" + (bestIndex + 1);
-        } else {
-          bestText.textContent =
-            "最も一致した基準画像：なし";
+          bestIndex = index;
+
+          bestPairs = goodPairs;
+
         }
-
-        // 認識判定
-        if (bestCount >= MATCH_THRESHOLD) {
-          statusText.textContent = "照合完了";
-          statusText.style.color = "green";
-        } else {
-          statusText.textContent = "認識中...";
-          statusText.style.color = "black";
-        }
-
-      } catch (error) {
-        console.error(error);
-        statusText.textContent =
-          "認識処理でエラーが発生しました。";
 
       } finally {
-        if (frame) frame.delete();
-        if (gray) gray.delete();
-        if (keypoints) keypoints.delete();
-        if (descriptors) descriptors.delete();
 
-        busy = false;
+        matches.delete();
 
-        // 約0.5秒ごとに認識
-        setTimeout(recognize, 500);
       }
+
+    });
+
+
+    scoreText.textContent =
+      "良好な対応点数：" + bestCount;
+
+
+    // 認識判定
+    if (bestCount >= MATCH_THRESHOLD) {
+
+      statusText.textContent =
+        "照合完了";
+
+      message.textContent =
+        "星月夜の特徴点が一致しました";
+
+    } else {
+
+      statusText.textContent =
+        "照合できません";
+
+      message.textContent =
+        "十分な一致を確認できません";
+
     }
 
-    // OpenCV.jsの初期化
-    cv.then(initialize);
 
-  </script>
+    // 対応点を表示
+    if (bestIndex >= 0) {
+
+      drawMatches(
+        images[bestIndex],
+        references[bestIndex],
+        cameraCanvas,
+        cameraPoints,
+        bestPairs
+      );
+
+    } else {
+
+      drawEmptyCanvas();
+
+    }
+
+  } finally {
+
+    src.delete();
+    gray.delete();
+    keypoints.delete();
+    descriptors.delete();
+    mask.delete();
+
+  }
+
+}
+
+
+// 対応点を描画
+function drawMatches(
+  referenceImage,
+  reference,
+  cameraImage,
+  cameraPoints,
+  pairs
+) {
+
+  const refW = PANEL_W;
+  const refH = PANEL_H;
+
+  const camW = PANEL_W;
+  const camH = PANEL_H;
+
+  matchCanvas.width = refW + camW;
+
+  matchCanvas.height = Math.max(
+    refH,
+    camH
+  );
+
+  matchCtx.clearRect(
+    0,
+    0,
+    matchCanvas.width,
+    matchCanvas.height
+  );
+
+  matchCtx.fillStyle = "#222";
+
+  matchCtx.fillRect(
+    0,
+    0,
+    matchCanvas.width,
+    matchCanvas.height
+  );
+
+
+  // 左：基準画像
+  matchCtx.drawImage(
+    referenceImage,
+    0,
+    0,
+    refW,
+    refH
+  );
+
+
+  // 右：カメラ画像
+  matchCtx.drawImage(
+    cameraImage,
+    refW,
+    0,
+    camW,
+    camH
+  );
+
+
+  // 座標の倍率
+  const refScaleX =
+    refW / reference.width;
+
+  const refScaleY =
+    refH / reference.height;
+
+  const camScaleX =
+    camW / cameraImage.width;
+
+  const camScaleY =
+    camH / cameraImage.height;
+
+
+  // 対応点同士を緑色の線で結ぶ
+  matchCtx.lineWidth = 1;
+
+  pairs.forEach(pair => {
+
+    const rp =
+      reference.points[pair.referenceIndex];
+
+    const cp =
+      cameraPoints[pair.cameraIndex];
+
+    if (!rp || !cp) return;
+
+    matchCtx.beginPath();
+
+    matchCtx.moveTo(
+      rp.x * refScaleX,
+      rp.y * refScaleY
+    );
+
+    matchCtx.lineTo(
+      refW + cp.x * camScaleX,
+      cp.y * camScaleY
+    );
+
+    matchCtx.strokeStyle =
+      "rgba(0, 255, 100, 0.85)";
+
+    matchCtx.stroke();
+
+  });
+
+
+  // 左右の対応点に赤い丸を表示
+  pairs.forEach(pair => {
+
+    const rp =
+      reference.points[pair.referenceIndex];
+
+    const cp =
+      cameraPoints[pair.cameraIndex];
+
+    if (rp) {
+
+      drawPoint(
+        rp.x * refScaleX,
+        rp.y * refScaleY
+      );
+
+    }
+
+    if (cp) {
+
+      drawPoint(
+        refW + cp.x * camScaleX,
+        cp.y * camScaleY
+      );
+
+    }
+
+  });
+
+}
+
+
+// 対応点に赤い丸を表示
+function drawPoint(x, y) {
+
+  matchCtx.beginPath();
+
+  matchCtx.arc(
+    x,
+    y,
+    3,
+    0,
+    Math.PI * 2
+  );
+
+  matchCtx.fillStyle = "#ff3333";
+
+  matchCtx.fill();
+
+}
+
+
+// 対応点がない場合の表示
+function drawEmptyCanvas() {
+
+  matchCanvas.width = PANEL_W * 2;
+
+  matchCanvas.height = PANEL_H;
+
+  matchCtx.fillStyle = "#222";
+
+  matchCtx.fillRect(
+    0,
+    0,
+    matchCanvas.width,
+    matchCanvas.height
+  );
+
+  matchCtx.fillStyle = "white";
+
+  matchCtx.font = "18px sans-serif";
+
+  matchCtx.textAlign = "center";
+
+  matchCtx.fillText(
+    "対応点を表示できません",
+    matchCanvas.width / 2,
+    matchCanvas.height / 2
+  );
+
+}
+
+
+// OpenCVの初期化
+cv.then(initialize).catch(error => {
+
+  console.error(error);
+
+  statusText.textContent =
+    "OpenCVの初期化に失敗しました";
+
+});
+
+</script>
 
 </body>
 </html>
