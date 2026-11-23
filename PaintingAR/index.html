@@ -31,14 +31,6 @@
       font-weight: bold;
     }
 
-    #matchCanvas {
-      width: 100%;
-      max-width: 900px;
-      height: auto;
-      border: 1px solid #888;
-      background: white;
-    }
-
     .controls {
       margin: 15px;
     }
@@ -47,6 +39,32 @@
       padding: 8px 14px;
       font-size: 16px;
       margin: 5px;
+    }
+
+    /* 画像の見出し */
+    .image-labels {
+      display: flex;
+      justify-content: center;
+      width: 100%;
+      max-width: 900px;
+      margin: 20px auto 5px;
+    }
+
+    .image-label {
+      width: 50%;
+      font-size: 18px;
+      font-weight: bold;
+    }
+
+    /* 照合結果の画像 */
+    #matchCanvas {
+      display: block;
+      width: 100%;
+      max-width: 900px;
+      height: auto;
+      margin: 0 auto;
+      border: 1px solid #888;
+      background: white;
     }
 
     .images {
@@ -92,6 +110,12 @@
 </div>
 
 <div id="result">良好な対応点数：--</div>
+
+<!-- 画像の上に見出しを表示 -->
+<div class="image-labels">
+  <div class="image-label">比較画像</div>
+  <div class="image-label">基準画像</div>
+</div>
 
 <canvas id="matchCanvas"></canvas>
 
@@ -286,9 +310,7 @@ function compareSelected() {
     drawMatches(
       target,
       reference,
-      goodMatches,
-      targetIndex,
-      referenceIndex
+      goodMatches
     );
 
   } catch (error) {
@@ -307,9 +329,7 @@ function compareSelected() {
 function drawMatches(
   target,
   reference,
-  goodMatches,
-  targetIndex,
-  referenceIndex
+  goodMatches
 ) {
 
   const leftWidth = target.mat.cols;
@@ -340,21 +360,7 @@ function drawMatches(
   ctx.drawImage(leftCanvas, 0, 0);
   ctx.drawImage(rightCanvas, leftWidth, 0);
 
-  ctx.fillStyle = "red";
-  ctx.font = "16px sans-serif";
-
-  ctx.fillText(
-    "比較画像 a" + (targetIndex + 1) + ".png",
-    10,
-    20
-  );
-
-  ctx.fillText(
-    "基準画像 a" + (referenceIndex + 1) + ".png",
-    leftWidth + 10,
-    20
-  );
-
+  // 対応点を描画
   ctx.strokeStyle = "lime";
   ctx.lineWidth = 1;
 
