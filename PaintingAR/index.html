@@ -65,6 +65,7 @@
   <label for="testSelect">比較する画像：</label>
 
   <select id="testSelect">
+    <option value="0">a1.png（0度）</option>
     <option value="1">a2.png（+15度）</option>
     <option value="2">a3.png（-15度）</option>
     <option value="3">a4.png（+30度）</option>
@@ -81,7 +82,7 @@
 <canvas id="matchCanvas"></canvas>
 
 <div class="images">
-  <img id="img0" src="test/a1.png" alt="基準画像">
+  <img id="img0" src="test/a1.png" alt="0度">
   <img id="img1" src="test/a2.png" alt="+15度">
   <img id="img2" src="test/a3.png" alt="-15度">
   <img id="img3" src="test/a4.png" alt="+30度">
@@ -112,7 +113,10 @@ function initialize(readyCV) {
 
   try {
     orb = new cvx.ORB(1000);
-    matcher = new cvx.BFMatcher(cvx.NORM_HAMMING, false);
+    matcher = new cvx.BFMatcher(
+      cvx.NORM_HAMMING,
+      false
+    );
 
     prepareImages();
 
@@ -129,7 +133,9 @@ function prepareImages() {
   const images = [];
 
   for (let i = 0; i < 7; i++) {
-    images.push(document.getElementById("img" + i));
+    images.push(
+      document.getElementById("img" + i)
+    );
   }
 
   Promise.all(images.map(img => {
@@ -196,6 +202,7 @@ function createDescriptors(images) {
 
     compareButton.disabled = false;
 
+    // 初期状態でa1.pngを照合
     compareSelected();
 
   } catch (error) {
@@ -206,7 +213,7 @@ function createDescriptors(images) {
   }
 }
 
-// 選択画像と基準画像を照合
+// 選択画像と基準画像a1.pngを照合
 function compareSelected() {
 
   if (testData.length !== 7) {
@@ -215,13 +222,18 @@ function compareSelected() {
 
   const selectedIndex = Number(testSelect.value);
 
+  // 基準画像は常にa1.png
   const reference = testData[0];
+
+  // 選択された画像
   const target = testData[selectedIndex];
 
   const matches = new cvx.DMatchVectorVector();
   const goodMatches = [];
 
   try {
+
+    // a1.pngと選択画像の特徴量を比較
     matcher.knnMatch(
       target.descriptors,
       reference.descriptors,
@@ -253,10 +265,12 @@ function compareSelected() {
     drawMatches(
       target,
       reference,
-      goodMatches
+      goodMatches,
+      selectedIndex
     );
 
   } catch (error) {
+
     statusText.textContent =
       "照合エラー：" + error.message;
 
@@ -268,7 +282,12 @@ function compareSelected() {
 }
 
 // 対応点を描画
-function drawMatches(target, reference, goodMatches) {
+function drawMatches(
+  target,
+  reference,
+  goodMatches,
+  selectedIndex
+) {
 
   const leftWidth = target.mat.cols;
   const height = target.mat.rows;
@@ -301,7 +320,12 @@ function drawMatches(target, reference, goodMatches) {
   ctx.fillStyle = "red";
   ctx.font = "16px sans-serif";
 
-  ctx.fillText("比較画像", 10, 20);
+  ctx.fillText(
+    "比較画像 a" + (selectedIndex + 1) + ".png",
+    10,
+    20
+  );
+
   ctx.fillText(
     "基準画像 a1.png",
     leftWidth + 10,
@@ -361,7 +385,7 @@ function drawMatches(target, reference, goodMatches) {
   }
 }
 
-// ボタン・選択変更
+// ボタンと選択変更
 compareButton.addEventListener(
   "click",
   compareSelected
@@ -372,7 +396,7 @@ testSelect.addEventListener(
   compareSelected
 );
 
-// OpenCV.js の読み込み完了を待つ
+// OpenCV.js 読み込み完了を待つ
 if (
   window.cv &&
   typeof window.cv.then === "function"
