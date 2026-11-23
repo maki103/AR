@@ -1,0 +1,344 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>絵画認識・ORB特徴点マッチング</title>
+
+  <script src="./opencv-3.0.0-standalone.js"></script>
+
+  <style>
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      margin: 20px;
+      background: #f5f5f5;
+    }
+
+    h2 {
+      margin-bottom: 15px;
+    }
+
+    #status {
+      margin: 15px;
+      font-weight: bold;
+    }
+
+    #result {
+      margin: 15px;
+      font-size: 20px;
+      font-weight: bold;
+    }
+
+    #matchCanvas {
+      width: 100%;
+      max-width: 640px;
+      border: 1px solid #888;
+      background: white;
+    }
+
+    .controls {
+      margin: 15px;
+    }
+
+    button, select {
+      padding: 8px 14px;
+      font-size: 16px;
+      margin: 5px;
+    }
+
+    .images {
+      display: none;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h2>絵画認識・ORB特徴点マッチング</h2>
+
+  <div id="status">OpenCV.js 読み込み中...</div>
+
+  <div class="controls">
+    <label for="testSelect">比較する画像：</label>
+
+    <select id="testSelect">
+      <option value="1">a2.png（+15度）</option>
+      <option value="2">a3.png（-15度）</option>
+      <option value="3">a4.png（+30度）</option>
+      <option value="4">a5.png（-30度）</option>
+      <option value="5">a6.png（+45度）</option>
+      <option value="6">a7.png（-45度）</option>
+    </select>
+
+    <button id="compareButton" disabled>照合する</button>
+  </div>
+
+  <div id="result">良好な対応点数：--</div>
+
+  <canvas id="matchCanvas"></canvas>
+
+  <!-- 比較用画像 -->
+  <div class="images">
+    <img id="img0" src="test/a1.png" alt="基準画像">
+    <img id="img1" src="test/a2.png" alt="+15度">
+    <img id="img2" src="test/a3.png" alt="-15度">
+    <img id="img3" src="test/a4.png" alt="+30度">
+    <img id="img4" src="test/a5.png" alt="-30度">
+    <img id="img5" src="test/a6.png" alt="+45度">
+    <img id="img6" src="test/a7.png" alt="-45度">
+  </div>
+
+<script>
+let cvx;
+let orb;
+let matcher;
+
+let referenceDescriptors = null;
+let referenceKeypoints = null;
+
+let testData = [];
+
+const RATIO_THRESHOLD = 0.75;
+
+const statusText = document.getElementById("status");
+const resultText = document.getElementById("result");
+const canvas = document.getElementById("matchCanvas");
+const ctx = canvas.getContext("2d");
+
+const testSelect = document.getElementById("testSelect");
+const compareButton = document.getElementById("compareButton");
+
+function initialize() {
+  cvx = window.cv;
+
+  try {
+    orb = new cvx.ORB(1000);
+    matcher = new cvx.BFMatcher(cvx.NORM_HAMMING, false);
+
+    prepareImages();
+
+  } catch (error) {
+    statusText.textContent =
+      "初期化エラー：" + error.message;
+    console.error(error);
+  }
+}
+
+// 画像の読み込み
+function prepareImages() {
+  const images = [];
+
+  for (let i = 0; i < 7; i++) {
+    images.push(document.getElementById("img" + i));
+  }
+
+  const waitImages = images.map(img => {
+    return new Promise((resolve, reject) => {
+      if (img.complete && img.naturalWidth > 0) {
+        resolve();
+      } else {
+        img.onload = resolve;
+        img.onerror = () => reject(
+          new Error("画像を読み込めません：" + img.src)
+        );
+      }
+    });
+  });
+
+  Promise.all(waitImages)
+    .then(() => {
+      createDescriptors(images);
+    })
+    .catch(error => {
+      statusText.textContent = error.message;
+      console.error(error);
+    });
+}
+
+// 特徴点と特徴量を取得
+function createDescriptors(images) {
+  try {
+    const data = [];
+
+    for (let i = 0; i < images.length; i++) {
+      const mat = cvx.imread(images[i]);
+      const gray = new cvx.Mat();
+      const keypoints = new cvx.KeyPointVector();
+      const descriptors = new cvx.Mat();
+
+      cvx.cvtColor(
+        mat,
+        gray,
+        cvx.COLOR_RGBA2GRAY
+      );
+
+      orb.detectAndCompute(
+        gray,
+        new cvx.Mat(),
+        keypoints,
+        descriptors
+      );
+
+      data.push({
+        keypoints: keypoints,
+        descriptors: descriptors,
+        mat: mat,
+        gray: gray
+      });
+    }
+
+    testData = data;
+
+    statusText.textContent =
+      "画像の読み込み完了。照合できます。";
+
+    compareButton.disabled = false;
+
+    compareSelected();
+
+  } catch (error) {
+    statusText.textContent =
+      "特徴量の取得エラー：" + error.message;
+    console.error(error);
+  }
+}
+
+// 選択した画像と基準画像を比較
+function compareSelected() {
+  if (testData.length !== 7) {
+    return;
+  }
+
+  const selectedIndex = Number(testSelect.value);
+
+  const reference = testData[0];
+  const target = testData[selectedIndex];
+
+  const matches = new cvx.DMatchVectorVector();
+
+  try {
+    matcher.knnMatch(
+      target.descriptors,
+      reference.descriptors,
+      matches,
+      2
+    );
+
+    const goodMatches = [];
+
+    for (let i = 0; i < matches.size(); i++) {
+      const pair = matches.get(i);
+
+      if (pair.size() >= 2) {
+        const first = pair.get(0);
+        const second = pair.get(1);
+
+        if (first.distance < RATIO_THRESHOLD * second.distance) {
+          goodMatches.push(first);
+        }
+      }
+    }
+
+    resultText.textContent =
+      "良好な対応点数：" + goodMatches.length;
+
+    drawMatches(
+      target,
+      reference,
+      goodMatches
+    );
+
+  } catch (error) {
+    statusText.textContent =
+      "照合エラー：" + error.message;
+    console.error(error);
+
+  } finally {
+    matches.delete();
+  }
+}
+
+// 対応点を描画
+function drawMatches(target, reference, goodMatches) {
+  const leftWidth = target.mat.cols;
+  const height = target.mat.rows;
+  const rightWidth = reference.mat.cols;
+
+  canvas.width = leftWidth + rightWidth;
+  canvas.height = height;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const leftCanvas = document.createElement("canvas");
+  leftCanvas.width = leftWidth;
+  leftCanvas.height = height;
+
+  const rightCanvas = document.createElement("canvas");
+  rightCanvas.width = rightWidth;
+  rightCanvas.height = height;
+
+  cvx.imshow(leftCanvas, target.mat);
+  cvx.imshow(rightCanvas, reference.mat);
+
+  ctx.drawImage(leftCanvas, 0, 0);
+  ctx.drawImage(rightCanvas, leftWidth, 0);
+
+  ctx.fillStyle = "red";
+  ctx.font = "16px sans-serif";
+  ctx.fillText("比較画像", 10, 20);
+  ctx.fillText("基準画像 a1.png", leftWidth + 10, 20);
+
+  ctx.strokeStyle = "lime";
+  ctx.lineWidth = 1;
+
+  for (const match of goodMatches) {
+    const targetPoint =
+      target.keypoints.get(match.queryIdx).pt;
+
+    const referencePoint =
+      reference.keypoints.get(match.trainIdx).pt;
+
+    const x1 = targetPoint.x;
+    const y1 = targetPoint.y;
+
+    const x2 = leftWidth + referencePoint.x;
+    const y2 = referencePoint.y;
+
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+
+    ctx.fillStyle = "red";
+
+    ctx.beginPath();
+    ctx.arc(x1, y1, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(x2, y2, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// ボタンで照合
+compareButton.addEventListener("click", compareSelected);
+
+// 選択変更で照合
+testSelect.addEventListener("change", compareSelected);
+
+// OpenCV.js の初期化完了を待つ
+if (window.cv && window.cv.Mat) {
+  initialize();
+} else if (window.cv) {
+  window.cv.onRuntimeInitialized = initialize;
+} else {
+  statusText.textContent =
+    "OpenCV.js を読み込めませんでした。";
+}
+</script>
+
+</body>
+</html>
