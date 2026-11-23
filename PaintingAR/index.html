@@ -62,17 +62,31 @@
 <div id="status">OpenCV.js 読み込み中...</div>
 
 <div class="controls">
-  <label for="testSelect">比較する画像：</label>
+  <div>
+    <label for="referenceSelect">基準画像：</label>
+    <select id="referenceSelect">
+      <option value="0">a1.png（0度）</option>
+      <option value="1">a2.png（+15度）</option>
+      <option value="2">a3.png（-15度）</option>
+      <option value="3">a4.png（+30度）</option>
+      <option value="4">a5.png（-30度）</option>
+      <option value="5">a6.png（+45度）</option>
+      <option value="6">a7.png（-45度）</option>
+    </select>
+  </div>
 
-  <select id="testSelect">
-    <option value="0">a1.png（0度）</option>
-    <option value="1">a2.png（+15度）</option>
-    <option value="2">a3.png（-15度）</option>
-    <option value="3">a4.png（+30度）</option>
-    <option value="4">a5.png（-30度）</option>
-    <option value="5">a6.png（+45度）</option>
-    <option value="6">a7.png（-45度）</option>
-  </select>
+  <div>
+    <label for="testSelect">比較画像：</label>
+    <select id="testSelect">
+      <option value="0">a1.png（0度）</option>
+      <option value="1">a2.png（+15度）</option>
+      <option value="2">a3.png（-15度）</option>
+      <option value="3">a4.png（+30度）</option>
+      <option value="4">a5.png（-30度）</option>
+      <option value="5">a6.png（+45度）</option>
+      <option value="6">a7.png（-45度）</option>
+    </select>
+  </div>
 
   <button id="compareButton" disabled>照合する</button>
 </div>
@@ -82,13 +96,13 @@
 <canvas id="matchCanvas"></canvas>
 
 <div class="images">
-  <img id="img0" src="test/a1.png" alt="0度">
-  <img id="img1" src="test/a2.png" alt="+15度">
-  <img id="img2" src="test/a3.png" alt="-15度">
-  <img id="img3" src="test/a4.png" alt="+30度">
-  <img id="img4" src="test/a5.png" alt="-30度">
-  <img id="img5" src="test/a6.png" alt="+45度">
-  <img id="img6" src="test/a7.png" alt="-45度">
+  <img id="img0" src="test/a1.png" alt="a1">
+  <img id="img1" src="test/a2.png" alt="a2">
+  <img id="img2" src="test/a3.png" alt="a3">
+  <img id="img3" src="test/a4.png" alt="a4">
+  <img id="img4" src="test/a5.png" alt="a5">
+  <img id="img5" src="test/a6.png" alt="a6">
+  <img id="img6" src="test/a7.png" alt="a7">
 </div>
 
 <script>
@@ -104,8 +118,14 @@ const resultText = document.getElementById("result");
 const canvas = document.getElementById("matchCanvas");
 const ctx = canvas.getContext("2d");
 
-const testSelect = document.getElementById("testSelect");
-const compareButton = document.getElementById("compareButton");
+const referenceSelect =
+  document.getElementById("referenceSelect");
+
+const testSelect =
+  document.getElementById("testSelect");
+
+const compareButton =
+  document.getElementById("compareButton");
 
 // OpenCV.js 初期化
 function initialize(readyCV) {
@@ -113,6 +133,7 @@ function initialize(readyCV) {
 
   try {
     orb = new cvx.ORB(1000);
+
     matcher = new cvx.BFMatcher(
       cvx.NORM_HAMMING,
       false
@@ -202,7 +223,6 @@ function createDescriptors(images) {
 
     compareButton.disabled = false;
 
-    // 初期状態でa1.pngを照合
     compareSelected();
 
   } catch (error) {
@@ -213,27 +233,28 @@ function createDescriptors(images) {
   }
 }
 
-// 選択画像と基準画像a1.pngを照合
+// 選択した基準画像と比較画像を照合
 function compareSelected() {
 
   if (testData.length !== 7) {
     return;
   }
 
-  const selectedIndex = Number(testSelect.value);
+  const referenceIndex =
+    Number(referenceSelect.value);
 
-  // 基準画像は常にa1.png
-  const reference = testData[0];
+  const targetIndex =
+    Number(testSelect.value);
 
-  // 選択された画像
-  const target = testData[selectedIndex];
+  const reference = testData[referenceIndex];
+  const target = testData[targetIndex];
 
   const matches = new cvx.DMatchVectorVector();
   const goodMatches = [];
 
   try {
 
-    // a1.pngと選択画像の特徴量を比較
+    // 比較画像と基準画像の特徴量を照合
     matcher.knnMatch(
       target.descriptors,
       reference.descriptors,
@@ -266,7 +287,8 @@ function compareSelected() {
       target,
       reference,
       goodMatches,
-      selectedIndex
+      targetIndex,
+      referenceIndex
     );
 
   } catch (error) {
@@ -286,7 +308,8 @@ function drawMatches(
   target,
   reference,
   goodMatches,
-  selectedIndex
+  targetIndex,
+  referenceIndex
 ) {
 
   const leftWidth = target.mat.cols;
@@ -321,13 +344,13 @@ function drawMatches(
   ctx.font = "16px sans-serif";
 
   ctx.fillText(
-    "比較画像 a" + (selectedIndex + 1) + ".png",
+    "比較画像 a" + (targetIndex + 1) + ".png",
     10,
     20
   );
 
   ctx.fillText(
-    "基準画像 a1.png",
+    "基準画像 a" + (referenceIndex + 1) + ".png",
     leftWidth + 10,
     20
   );
@@ -385,9 +408,15 @@ function drawMatches(
   }
 }
 
-// ボタンと選択変更
+// 照合ボタン
 compareButton.addEventListener(
   "click",
+  compareSelected
+);
+
+// 選択変更時にも照合
+referenceSelect.addEventListener(
+  "change",
   compareSelected
 );
 
